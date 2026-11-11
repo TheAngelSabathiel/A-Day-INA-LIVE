@@ -248,7 +248,7 @@ function ProgramTab({ settings, onSaved, notify }) {
         <Field label="Schedule"><Text value={d.schedule} onChange={set('schedule')} /></Field>
         <Field label="Venue"><Text value={d.venue} onChange={set('venue')} /></Field>
         <Field label="Synopsis (spoiler-free)" wide><Area rows={5} value={d.synopsis} onChange={set('synopsis')} /></Field>
-        <Field label="Content advisory" wide><Area rows={3} value={d.advisory} onChange={set('advisory')} /></Field>
+        <Field label="Trigger warning (shown on the phone program)" wide><Area rows={3} value={d.advisory} onChange={set('advisory')} /></Field>
         <Field label="Credits" hint="Isang linya bawat credit." wide><Area rows={10} value={d.credits} onChange={set('credits')} /></Field>
         <Field label="Socials / links" wide><Area rows={3} value={d.socials} onChange={set('socials')} /></Field>
         <Field label="Helpline note (post-show)" wide><Area rows={6} value={d.helpline} onChange={set('helpline')} /></Field>

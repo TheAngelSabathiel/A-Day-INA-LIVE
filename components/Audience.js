@@ -345,6 +345,22 @@ function Program({ settings, cast, thanks = false, cue, onClose, hidden = false 
         </div>
       </header>
 
+      {!thanks && (settings.advisory || settings.helpline) && (
+        <section className="tw-card" aria-label="Trigger warning">
+          <div className="tw-head">
+            <span className="tw-icon" aria-hidden="true">!</span>
+            <strong>Trigger warning</strong>
+          </div>
+          {settings.advisory && <p>{settings.advisory}</p>}
+          {settings.helpline && (
+            <details className="tw-help">
+              <summary>Kung kailangan mo ng kausap</summary>
+              <div className="helpline">{settings.helpline}</div>
+            </details>
+          )}
+        </section>
+      )}
+
       {thanks && (
         <section className="prog-thanks">
           <h2>{cue?.phone_title || 'Maraming salamat sa panonood!'}</h2>
