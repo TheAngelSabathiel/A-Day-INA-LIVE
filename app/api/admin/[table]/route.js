@@ -9,7 +9,7 @@ const COLUMNS = {
   cast_members: ['id', 'sort', 'character_name', 'display_name', 'role_label', 'actor_name', 'bio', 'photo_url'],
   performances: ['id', 'sort', 'label', 'is_test'],
   cues: ['id', 'sort', 'label', 'note', 'screen_mode', 'phone_mode', 'title', 'subtitle', 'body', 'caption', 'phone_title', 'phone_body',
-    'options', 'round_key', 'vote_open', 'show_bars', 'show_qr', 'show_live', 'counter_target', 'flowers', 'timer_seconds',
+    'options', 'round_key', 'vote_open', 'show_bars', 'show_qr', 'show_live', 'counter_target', 'flowers', 'reactions', 'timer_seconds',
     'chat_lines', 'chat_interval_ms', 'chat_loop'],
 };
 

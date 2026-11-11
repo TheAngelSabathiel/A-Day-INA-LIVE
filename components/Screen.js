@@ -7,11 +7,11 @@ import { Brand } from './Brand';
 import QR, { prettyUrl, useJoinUrl } from './QR';
 import ThemeVars from './ThemeVars';
 import ClothBg from './ClothBg';
+import { ReactionIcon } from './Reactions';
 import Setup from './Setup';
 import VoteBars, { tallyTotal } from './VoteBars';
 
 const DARK_MODES = new Set(['glitch', 'message', 'sms', 'black']);
-const FLOWERS = ['🌸', '💐', '🌹', '🌷', '🌺'];
 
 export default function Screen() {
   const { settings, state, cue, cast, status } = useShow();
@@ -121,11 +121,11 @@ export default function Screen() {
           {petals.map((p) => (
             <span
               key={p.id}
-              className="petal"
+              className={`petal ${p.lane ? 'in-lane' : ''}`}
               style={{ left: `${p.x}%`, animationDuration: `${p.d}s`, '--size': p.s, '--sway': `${p.w}vw` }}
               onAnimationEnd={() => removePetal(p.id)}
             >
-              {p.e}
+              <ReactionIcon kind={p.kind} size={64} />
             </span>
           ))}
         </div>
@@ -274,18 +274,52 @@ function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, c
 
     case 'curtain':
       return (
-        <section className="sc-curtain">
-          <Brand settings={settings} size="lg" className="extrude" />
-          {cue.title && <h1 className="sc-h2 extrude">{cue.title}</h1>}
-          {cue.body && <p className="sc-body">{cue.body}</p>}
-          {settings.credits && <div className="sc-credits">{settings.credits}</div>}
-          {settings.helpline && <div className="sc-help">{settings.helpline}</div>}
+        <section className={`sc-curtain ${settings.credits ? 'has-credits' : ''}`}>
+          <div className="cur-main">
+            <Brand settings={settings} size="lg" className="extrude" />
+            {cue.title && <h1 className="sc-h2 extrude">{cue.title}</h1>}
+            {cue.body && <p className="sc-body">{cue.body}</p>}
+            {settings.helpline && <div className="sc-help">{settings.helpline}</div>}
+          </div>
+          {settings.credits && <div className="cur-credits"><Credits text={settings.credits} /></div>}
         </section>
       );
 
     default:
       return null;
   }
+}
+
+/* "Role: Name" lines become a centered two-column roll; other lines become headings. */
+function Credits({ text }) {
+  const groups = [];
+  let cur = null;
+  for (const raw of String(text).split('\n')) {
+    const line = raw.trim();
+    if (!line) { cur = null; continue; }
+    const m = line.match(/^([^:]{1,40}):\s*(.+)$/);
+    if (m) {
+      if (!cur || cur.type !== 'rows') { cur = { type: 'rows', rows: [] }; groups.push(cur); }
+      cur.rows.push([m[1].trim(), m[2].trim()]);
+    } else {
+      cur = null;
+      const seenRows = groups.some((g) => g.type === 'rows');
+      groups.push({ type: 'line', text: line, note: seenRows });
+    }
+  }
+  return (
+    <div className="credits">
+      {groups.map((g, i) => (g.type === 'line'
+        ? <p key={i} className={g.note ? 'credits-note' : 'credits-line'}>{g.text}</p>
+        : (
+          <dl key={i} className="credits-rows">
+            {g.rows.map(([role, name], j) => (
+              <div key={j}><dt>{role}</dt><dd>{name}</dd></div>
+            ))}
+          </dl>
+        )))}
+    </div>
+  );
 }
 
 function ChatFeed({ msgs, big = false }) {
@@ -402,14 +436,17 @@ function useReactions(perfId, key) {
         const r = p.new || {};
         if (perfId && r.performance_id !== perfId) return;
         const n = Math.max(1, Math.min(10, r.count || 1));
-        setTotal((t) => t + n);
-        const add = Array.from({ length: Math.min(n, 6) }, () => ({
+        const flower = r.kind === 'flower';
+        if (flower) setTotal((t) => t + n);
+        // Flowers rain across the whole set; other reactions rise up the right edge like a livestream.
+        const add = Array.from({ length: Math.min(n, flower ? 6 : 4) }, () => ({
           id: Math.random().toString(36).slice(2),
-          e: r.kind === 'heart' ? '❤️' : FLOWERS[Math.floor(Math.random() * FLOWERS.length)],
-          x: 3 + Math.random() * 94,
-          d: 4.5 + Math.random() * 3,
-          s: 0.8 + Math.random() * 1.2,
-          w: Math.random() * 8 - 4,
+          kind: r.kind,
+          lane: !flower,
+          x: flower ? 3 + Math.random() * 94 : 84 + Math.random() * 11,
+          d: flower ? 4.5 + Math.random() * 3 : 3.6 + Math.random() * 1.6,
+          s: flower ? 0.8 + Math.random() * 0.9 : 0.75 + Math.random() * 0.5,
+          w: flower ? Math.random() * 8 - 4 : Math.random() * 3 - 1.5,
         }));
         setPetals((prev) => [...prev, ...add].slice(-90));
       })

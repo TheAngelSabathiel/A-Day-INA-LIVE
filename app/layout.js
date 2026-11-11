@@ -8,6 +8,8 @@ import './globals.css';
 export const metadata = {
   title: 'A Day INA: LIVE',
   description: 'Sumali sa LIVE. Program, botohan, at higit pa.',
+  // Every word in this show is intentional. Stop browsers from offering to translate it.
+  other: { google: 'notranslate' },
 };
 
 export const viewport = {
@@ -19,8 +21,8 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="fil">
-      <body>{children}</body>
+    <html lang="fil" translate="no" className="notranslate">
+      <body translate="no" className="notranslate">{children}</body>
     </html>
   );
 }

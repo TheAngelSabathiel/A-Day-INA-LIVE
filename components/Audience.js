@@ -9,6 +9,7 @@ import ClothBg from './ClothBg';
 import ThemeVars from './ThemeVars';
 import Setup from './Setup';
 import { findCast } from './VoteBars';
+import { ReactionDock, ReactionIcon, useReactionSender } from './Reactions';
 
 // Modes where the phone must stay black so the house stays dark.
 const BLACK = new Set(['dark', 'glitch', 'message']);
@@ -55,7 +56,7 @@ export default function Audience() {
           <>
             {mode === 'program' && <Program settings={settings} cast={cast} hidden={showGate} />}
             {mode === 'thanks' && <Program settings={settings} cast={cast} thanks cue={cue} />}
-            {mode === 'standby' && <Standby cue={cue} settings={settings} onProgram={() => setProgramOpen(true)} />}
+            {mode === 'standby' && <Standby cue={cue} perf={perf} settings={settings} onProgram={() => setProgramOpen(true)} />}
             {mode === 'vote' && <VoteCard key={`${perf}:${cue?.round_key}`} cue={cue} perf={perf} cast={cast} settings={settings} />}
             {mode === 'flowers' && <FlowerCard cue={cue} perf={perf} settings={settings} />}
             {mode === 'dark' && (
@@ -86,7 +87,7 @@ export default function Audience() {
 function TitleCard({ settings, size = 'lg', live = true }) {
   return (
     <div className={`title-card tc-${size}`}>
-      <div className="tc-plate" />
+      <div className="tc-frame" aria-hidden="true"><i /><i /><i /><i /></div>
       {live && <span className="tc-live live-pill"><i />LIVE</span>}
       <div className="tc-brand"><Brand settings={settings} size={size === 'lg' ? 'xl' : 'lg'} /></div>
       {settings.tagline && <p className="tc-tag">{settings.tagline}</p>}
@@ -123,7 +124,7 @@ function Gate({ settings, onEnter }) {
 
 /* ---------- STANDBY ---------- */
 
-function Standby({ cue, settings, onProgram }) {
+function Standby({ cue, perf, settings, onProgram }) {
   return (
     <div className="ph-standby-wrap">
       <div className="ph-standby-top">
@@ -134,6 +135,7 @@ function Standby({ cue, settings, onProgram }) {
         <h1>{cue?.phone_title || 'Naka-LIVE ka.'}</h1>
         {cue?.phone_body && <p>{cue.phone_body}</p>}
       </div>
+      {cue?.reactions && perf && <ReactionDock perf={perf} kinds={['heart', 'haha', 'wow', 'sad']} night />}
       <button type="button" className="btn btn-ghost-night" onClick={onProgram}>Tingnan ang program</button>
       <p className="ph-hint">Pababain ang brightness. Lalabas dito ang botohan.</p>
     </div>
@@ -241,38 +243,23 @@ function VoteCard({ cue, perf, cast, settings }) {
 
 /* ---------- FLOWERS ---------- */
 
-const FLOWER_SET = ['🌸', '💐', '🌹', '🌷', '🌺'];
-
 function FlowerCard({ cue, perf, settings }) {
-  const pending = useRef(0);
+  const send = useReactionSender(perf);
   const [sent, setSent] = useState(0);
   const [bursts, setBursts] = useState([]);
   const [pressed, setPressed] = useState(false);
 
-  useEffect(() => {
-    const sb = getSupabase();
-    const flush = async () => {
-      const n = Math.min(10, pending.current);
-      if (!n || !sb) return;
-      pending.current -= n;
-      await sb.from('reactions').insert({ performance_id: perf, kind: 'flower', count: n });
-    };
-    const t = setInterval(flush, 2000);
-    return () => { clearInterval(t); flush(); };
-  }, [perf]);
-
   function tap() {
-    pending.current = Math.min(pending.current + 1, 30);
-    setSent((s) => s + 1);
+    send('flower');
+    setSent((n) => n + 1);
     setPressed(true);
     setTimeout(() => setPressed(false), 120);
-    const add = Array.from({ length: 3 }, () => ({
+    const add = Array.from({ length: 2 }, () => ({
       id: Math.random().toString(36).slice(2),
       dx: Math.round(Math.random() * 220 - 110),
-      rz: Math.round(Math.random() * 120 - 60),
-      e: FLOWER_SET[Math.floor(Math.random() * FLOWER_SET.length)],
+      rz: Math.round(Math.random() * 90 - 45),
     }));
-    setBursts((b) => [...b.slice(-18), ...add]);
+    setBursts((b) => [...b.slice(-16), ...add]);
     navigator.vibrate?.(10);
   }
 
@@ -294,15 +281,19 @@ function FlowerCard({ cue, perf, settings }) {
             style={{ '--dx': `${b.dx}px`, '--rz': `${b.rz}deg` }}
             onAnimationEnd={() => setBursts((all) => all.filter((x) => x.id !== b.id))}
           >
-            {b.e}
+            <ReactionIcon kind="flower" size={46} />
           </span>
         ))}
         <button type="button" className={`flower-btn ${pressed ? 'pressed' : ''}`} onClick={tap} aria-label="Magpadala ng bulaklak">
           <span className="fb-rim" />
-          <span className="fb-face"><span className="fb-icon">💐</span><small>Tap</small></span>
+          <span className="fb-face">
+            <span className="fb-icon"><ReactionIcon kind="flower" size={112} /></span>
+            <small>Tap</small>
+          </span>
         </button>
       </div>
       <p className="center flower-count-ph">{sent > 0 ? `${sent} bulaklak ang naipadala mo` : 'I-tap nang paulit-ulit'}</p>
+      {cue?.reactions && perf && <ReactionDock perf={perf} kinds={['heart', 'haha', 'wow', 'sad']} />}
     </div>
   );
 }
@@ -363,35 +354,21 @@ function Program({ settings, cast, thanks = false, cue, onClose, hidden = false 
       )}
 
       <section className="sec">
-        <h2 className="sec-h">Ang mga INA ngayong gabi</h2>
+        <h2 className="sec-h sec-h-one">Ang mga INA ngayong gabi</h2>
         <p className="sec-hint">I-tap ang litrato para makilala sila.</p>
         <ul className="polaroids stage3d">
           {cast.map((c, i) => <Polaroid key={c.id} c={c} i={i} />)}
         </ul>
       </section>
 
-      {(settings.synopsis || settings.advisory) && (
+      {settings.synopsis && (
         <section className="sec">
           <h2 className="sec-h">Tungkol sa show</h2>
-          {settings.synopsis && <div className="note-card"><p>{settings.synopsis}</p></div>}
-          {settings.advisory && (
-            <div className="advisory">
-              <strong>Content advisory</strong>
-              <p>{settings.advisory}</p>
-            </div>
-          )}
+          <div className="note-card"><p>{settings.synopsis}</p></div>
         </section>
       )}
 
-      {(settings.credits || settings.socials || (!thanks && settings.helpline)) && (
-        <section className="sec">
-          <h2 className="sec-h">Credits</h2>
-          {settings.credits && <div className="note-card"><p className="pre">{settings.credits}</p></div>}
-          {settings.socials && <p className="pre socials">{settings.socials}</p>}
-          {!thanks && settings.helpline && <div className="helpline">{settings.helpline}</div>}
-        </section>
-      )}
-
+      {settings.socials && <p className="pre socials">{settings.socials}</p>}
       <footer className="prog-foot">Huwag isara ang page na ito. Dito lalabas ang botohan.</footer>
     </div>
   );

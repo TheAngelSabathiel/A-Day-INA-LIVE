@@ -174,7 +174,7 @@ function ControlInner() {
                     <span className="cue-n">{i + 1}</span>
                     <span className="cue-main">
                       <strong>{c.label}</strong>
-                      <span className="cue-sub">{MODE_LABEL[c.screen_mode] || c.screen_mode} · {MODE_LABEL[c.phone_mode] || c.phone_mode}{c.vote_open ? ' · VOTE' : ''}{c.flowers ? ' · FLOWERS' : ''}</span>
+                      <span className="cue-sub">{MODE_LABEL[c.screen_mode] || c.screen_mode} · {MODE_LABEL[c.phone_mode] || c.phone_mode}{c.vote_open ? ' · VOTE' : ''}{c.flowers ? ' · FLOWERS' : ''}{c.reactions ? ' · REACTIONS' : ''}</span>
                     </span>
                     {isNow && <span className="cue-live">ON</span>}
                   </button>
@@ -216,6 +216,7 @@ function CueChips({ c }) {
       <span className="chip">Phone: {MODE_LABEL[c.phone_mode] || c.phone_mode}</span>
       {c.vote_open && <span className="chip hot">Voting open</span>}
       {c.flowers && <span className="chip hot">Flowers</span>}
+      {c.reactions && <span className="chip hot">Reactions</span>}
       {c.chat_lines?.length > 0 && <span className="chip">Chat ×{c.chat_lines.length}{c.chat_loop ? ' loop' : ''}</span>}
       {c.counter_target != null && <span className="chip">Viewers → {Number(c.counter_target).toLocaleString('en-US')}</span>}
     </div>

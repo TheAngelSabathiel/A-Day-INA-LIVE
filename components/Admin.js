@@ -358,7 +358,7 @@ const PHONE_MODES = [
 const BLANK_CUE = {
   label: 'Bagong cue', note: '', screen_mode: 'live', phone_mode: 'standby', title: '', subtitle: '', body: '', caption: '',
   phone_title: '', phone_body: '', options: [], round_key: '', vote_open: false, show_bars: false, show_qr: false,
-  show_live: true, counter_target: null, flowers: false, timer_seconds: null, chat_lines: [], chat_interval_ms: 2500, chat_loop: false,
+  show_live: true, counter_target: null, flowers: false, reactions: false, timer_seconds: null, chat_lines: [], chat_interval_ms: 2500, chat_loop: false,
 };
 
 function CuesTab({ notify }) {
@@ -428,7 +428,7 @@ function CuesTab({ notify }) {
             <li key={c.id} className={sel === c.id ? 'on' : ''}>
               <button type="button" className="cue-pick" onClick={() => setSel(c.id)}>
                 <span className="cue-n">{i + 1}</span>
-                <span><strong>{c.label}</strong><small>{c.screen_mode} · {c.phone_mode}{c.vote_open ? ' · vote' : ''}</small></span>
+                <span><strong>{c.label}</strong><small>{c.screen_mode} · {c.phone_mode}{c.vote_open ? ' · vote' : ''}{c.reactions ? ' · reactions' : ''}</small></span>
               </button>
               <span className="cue-ord">
                 <button type="button" onClick={() => move(c, -1)} aria-label="Move up" disabled={i === 0}>▲</button>
@@ -513,6 +513,7 @@ function CueEditor({ cue, notify, onSaved, onClose, onDuplicate, onDelete }) {
           <Check label="LIVE badge + viewer counter" checked={d.show_live} onChange={set('show_live')} />
           <Check label="Show QR" checked={d.show_qr} onChange={set('show_qr')} />
           <Check label="Flowers (screen + phones)" checked={d.flowers} onChange={set('flowers')} />
+          <Check label="Audience reactions (love, haha, wow, sad)" checked={d.reactions} onChange={set('reactions')} />
         </div>
         <Field label="Viewer counter target" hint="Blangko = dahan-dahang tumataas. Hal. 525600 sa reveal.">
           <input type="number" value={d.counter_target ?? ''} onChange={(e) => set('counter_target')(e.target.value)} />
