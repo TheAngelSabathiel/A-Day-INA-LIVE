@@ -9,6 +9,7 @@ import ThemeVars from './ThemeVars';
 import ClothBg from './ClothBg';
 import Setup from './Setup';
 import VoteBars, { tallyTotal } from './VoteBars';
+import { cleanText, useAudienceComments } from '@/lib/comments';
 
 export default function Control() {
   return (
@@ -21,11 +22,12 @@ export default function Control() {
 const MODE_LABEL = {
   idle: 'Idle + QR', live: 'Live', title: 'Title card', vote: 'Vote', drumroll: 'Drumroll', result: 'Result',
   news: 'News', chat: 'Chat', glitch: 'Glitch', black: 'Black', message: 'Message', sms: 'SMS', curtain: 'Curtain',
-  program: 'Program', standby: 'Standby', flowers: 'Flowers', dark: 'Dark', thanks: 'Thanks',
+  winner: 'Winner', voicemsg: 'Voice msg', blackmsg: 'Black msg',
+  program: 'Program', standby: 'Standby', flowers: 'Flowers', dark: 'Dark', thanks: 'Thanks', react: 'React',
 };
 
 function ControlInner() {
-  const { settings, state, cue, cues, cast, status, online, applyState } = useShow({ allCues: true });
+  const { settings, state, cue, cues, cast, status, online, applyState, reloadCues } = useShow({ allCues: true });
   const [perfs, setPerfs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -138,18 +140,16 @@ function ControlInner() {
             {black ? 'BLACKOUT ON · Tap to restore' : 'Emergency blackout (screen + phones)'}
           </button>
 
-          {cue?.round_key && cue?.options?.length > 0 && (
-            <div className="panel">
-              <div className="panel-head">
-                <strong>Votes · {cue.round_key}</strong>
-                <span>{tallyTotal(cue.options, tally)} total {cue.vote_open ? '· OPEN' : '· closed'}</span>
-              </div>
-              <VoteBars options={cue.options} tally={tally} cast={cast} compact />
-            </div>
+          {cue?.round_key && (
+            <VotePanel
+              key={`${state?.performance_id}:${cue.round_key}`}
+              cue={cue} cues={cues} tally={tally} cast={cast} perfId={state?.performance_id} onError={setErr}
+            />
           )}
-          {cue?.round_key && !cue?.options?.length && (
-            <RoundPeek cues={cues} roundKey={cue.round_key} tally={tally} cast={cast} />
-          )}
+
+          <QuickEdit cue={cue} next={next} onSaved={reloadCues} onError={setErr} />
+
+          <CommentsPanel perfId={state?.performance_id} muted={!!state?.comments_muted} onMute={(v) => send({ comments_muted: v })} onError={setErr} />
 
           <form
             className="panel inject"
@@ -174,7 +174,7 @@ function ControlInner() {
                     <span className="cue-n">{i + 1}</span>
                     <span className="cue-main">
                       <strong>{c.label}</strong>
-                      <span className="cue-sub">{MODE_LABEL[c.screen_mode] || c.screen_mode} · {MODE_LABEL[c.phone_mode] || c.phone_mode}{c.vote_open ? ' · VOTE' : ''}{c.flowers ? ' · FLOWERS' : ''}{c.reactions ? ' · REACTIONS' : ''}</span>
+                      <span className="cue-sub">{MODE_LABEL[c.screen_mode] || c.screen_mode} · {MODE_LABEL[c.phone_mode] || c.phone_mode}{c.vote_open ? ' · VOTE' : ''}{c.flowers ? ' · FLOWERS' : ''}{c.reactions ? ' · EMOJI' : ''}{c.comments ? ' · COMMENTS' : ''}{c.fx && c.fx !== 'none' ? ` · ${c.fx.toUpperCase()}` : ''}</span>
                     </span>
                     {isNow && <span className="cue-live">ON</span>}
                   </button>
@@ -216,9 +216,178 @@ function CueChips({ c }) {
       <span className="chip">Phone: {MODE_LABEL[c.phone_mode] || c.phone_mode}</span>
       {c.vote_open && <span className="chip hot">Voting open</span>}
       {c.flowers && <span className="chip hot">Flowers</span>}
-      {c.reactions && <span className="chip hot">Reactions</span>}
+      {c.reactions && <span className="chip hot">Emojis</span>}
+      {c.comments && <span className="chip hot">Comments</span>}
+      {c.fx && c.fx !== 'none' && <span className="chip hot">{c.fx === 'heavy' ? 'Heavy glitch' : 'Flicker'}</span>}
       {c.chat_lines?.length > 0 && <span className="chip">Chat ×{c.chat_lines.length}{c.chat_loop ? ' loop' : ''}</span>}
       {c.counter_target != null && <span className="chip">Viewers → {Number(c.counter_target).toLocaleString('en-US')}</span>}
+    </div>
+  );
+}
+
+/* ---------- VOTES: live tally + manual votes + ghost votes ---------- */
+
+function VotePanel({ cue, cues, tally, cast, perfId, onError }) {
+  const src = cue.options?.length ? cue : cues.find((c) => c.round_key === cue.round_key && c.options?.length);
+  const options = src?.options || [];
+  const [ghost, setGhost] = useState(false);
+  const [target, setTarget] = useState('');
+  const [speed, setSpeed] = useState('normal');
+  const [flash, setFlash] = useState('');
+  const live = !!cue.vote_open;
+
+  const add = useCallback(async (boosts) => {
+    if (!perfId) { onError('Pumili muna ng Show.'); return; }
+    try {
+      await adminPost('/api/admin/boost', { performance_id: perfId, round_key: cue.round_key, boosts });
+    } catch (e) { onError(e.message); setGhost(false); }
+  }, [perfId, cue.round_key, onError]);
+
+  const tap = (choice, amount) => {
+    add([{ choice, amount }]);
+    setFlash(`+${amount} ${choice}`);
+    setTimeout(() => setFlash(''), 900);
+  };
+
+  // Ghost votes: small random batches every ~1.5s while voting is open. A target gets most of them.
+  useEffect(() => {
+    if (!ghost || !live || !options.length) return undefined;
+    const ms = speed === 'fast' ? 800 : speed === 'slow' ? 2600 : 1500;
+    const t = setInterval(() => {
+      const batch = [];
+      const n = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < n; i++) {
+        const choice = target && Math.random() < 0.65 ? target : options[Math.floor(Math.random() * options.length)];
+        batch.push({ choice, amount: 1 + Math.floor(Math.random() * (choice === target ? 5 : 3)) });
+      }
+      add(batch);
+    }, ms);
+    return () => clearInterval(t);
+  }, [ghost, live, target, speed, options, add]);
+
+  if (!options.length) return null;
+  const total = tallyTotal(options, tally);
+
+  return (
+    <div className="panel votes-panel">
+      <div className="panel-head">
+        <strong>Votes · {cue.round_key}</strong>
+        <span>{total.toLocaleString('en-US')} total · {live ? 'OPEN' : 'closed'}{flash && <b className="vp-flash"> {flash}</b>}</span>
+      </div>
+      <VoteBars options={options} tally={tally} cast={cast} compact />
+      <div className="vp-add">
+        {options.map((o) => (
+          <div key={o} className="vp-row">
+            <span className="vp-name">{o}</span>
+            {[1, 5, 10].map((n) => (
+              <button key={n} type="button" className="vp-btn" onClick={() => tap(o, n)}>+{n}</button>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className={`vp-ghost ${ghost && live ? 'on' : ''}`}>
+        <label className="check">
+          <input type="checkbox" checked={ghost} onChange={(e) => setGhost(e.target.checked)} />
+          <span>Ghost votes {ghost && !live ? '(hihinto: sarado ang botohan)' : ''}</span>
+        </label>
+        <select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Push votes to">
+          <option value="">Random</option>
+          {options.map((o) => <option key={o} value={o}>Push {o}</option>)}
+        </select>
+        <select value={speed} onChange={(e) => setSpeed(e.target.value)} aria-label="Speed">
+          <option value="slow">Slow</option>
+          <option value="normal">Normal</option>
+          <option value="fast">Fast</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- QUICK EDIT: name strips and titles, live ---------- */
+
+function QuickEdit({ cue, next, onSaved, onError }) {
+  const [which, setWhich] = useState('now');
+  const target = which === 'now' ? cue : next;
+  const [d, setD] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setD({ title: target?.title || '', subtitle: target?.subtitle || '', caption: target?.caption || '' });
+    setSaved(false);
+  }, [target?.id, target?.title, target?.subtitle, target?.caption]);
+
+  if (!target) return null;
+  const dirty = (d.title || '') !== (target.title || '') || (d.subtitle || '') !== (target.subtitle || '') || (d.caption || '') !== (target.caption || '');
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await adminPost('/api/admin/cues', { upsert: { ...target, title: d.title || null, subtitle: d.subtitle || null, caption: d.caption || null } });
+      setSaved(true);
+      onSaved?.();
+    } catch (err) { onError(err.message); } finally { setBusy(false); }
+  }
+
+  return (
+    <form className="panel quick-edit" onSubmit={save}>
+      <div className="panel-head">
+        <strong>Quick edit · {target.label}</strong>
+        <span className="seg-mini">
+          <button type="button" className={which === 'now' ? 'on' : ''} onClick={() => setWhich('now')}>Now</button>
+          <button type="button" className={which === 'next' ? 'on' : ''} onClick={() => setWhich('next')} disabled={!next}>Next</button>
+        </span>
+      </div>
+      <label className="qe-field"><span>Title / name</span><input value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} /></label>
+      <label className="qe-field"><span>Subtitle</span><input value={d.subtitle} onChange={(e) => setD({ ...d, subtitle: e.target.value })} /></label>
+      <label className="qe-field"><span>Caption</span><input value={d.caption} onChange={(e) => setD({ ...d, caption: e.target.value })} /></label>
+      <button className="btn btn-accent" disabled={!dirty || busy}>{busy ? 'Saving…' : saved && !dirty ? 'Live na' : 'Save (live agad)'}</button>
+    </form>
+  );
+}
+
+/* ---------- AUDIENCE COMMENTS: hide and mute ---------- */
+
+function CommentsPanel({ perfId, muted, onMute, onError }) {
+  const [list, setList] = useState([]);
+  const hidden = useAudienceComments(perfId, (c) => setList((l) => [c, ...l].slice(0, 30)));
+
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb || !perfId) { setList([]); return; }
+    sb.from('comments').select('*').eq('performance_id', perfId).order('id', { ascending: false }).limit(20)
+      .then(({ data }) => setList(data || []));
+  }, [perfId]);
+
+  async function hide(c) {
+    try {
+      await adminPost('/api/admin/comments', { id: c.id, hidden: true });
+      setList((l) => l.map((x) => (x.id === c.id ? { ...x, hidden: true } : x)));
+    } catch (e) { onError(e.message); }
+  }
+
+  return (
+    <div className="panel comments-panel">
+      <div className="panel-head">
+        <strong>Audience comments</strong>
+        <button type="button" className={`btn btn-sm ${muted ? 'btn-accent' : 'btn-outline'}`} onClick={() => onMute(!muted)}>
+          {muted ? 'MUTED · Tap to allow' : 'Mute comments'}
+        </button>
+      </div>
+      {list.length === 0 && <p className="muted small">Wala pang comments.</p>}
+      <ul className="cm-list">
+        {list.map((c) => {
+          const off = c.hidden || hidden.has(c.id);
+          return (
+            <li key={c.id} className={off ? 'is-hidden' : ''}>
+              <span className="cm-txt"><b>@{c.handle}</b> {cleanText(c.body)}</span>
+              {off ? <span className="cm-tag">Hidden</span> : <button type="button" className="btn btn-sm btn-text danger" onClick={() => hide(c)}>Hide</button>}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { useShow } from '@/lib/useShow';
+import { useShow, useTally } from '@/lib/useShow';
+import { cleanText, fillWinner, getHandle, setHandle, topOf } from '@/lib/comments';
 import { getSupabase } from '@/lib/supabase';
 import { getDeviceId, getStored, setStored } from '@/lib/device';
 import { requestGyro } from '@/lib/tilt';
@@ -11,21 +12,24 @@ import Setup from './Setup';
 import { findCast } from './VoteBars';
 import { ReactionDock, ReactionIcon, useReactionSender } from './Reactions';
 
+const EMOJIS = ['heart', 'haha', 'wow', 'sad', 'angry'];
+
 // Modes where the phone must stay black so the house stays dark.
-const BLACK = new Set(['dark', 'glitch', 'message']);
+const BLACK = new Set(['dark', 'glitch', 'message', 'blackmsg']);
 
 export default function Audience() {
   const { settings, state, cue, cast, status, online } = useShow();
   const [programOpen, setProgramOpen] = useState(false);
   const [entered, setEntered] = useState(true);
-  const mode = state?.override === 'black' ? 'dark' : cue?.phone_mode || 'program';
+  const raw = state?.override === 'black' ? 'dark' : cue?.phone_mode || 'program';
+  const mode = raw === 'flowers' ? 'react' : raw;
   const perf = state?.performance_id || null;
 
   useEffect(() => { setEntered(getStored('adi_entered') === '1'); }, []);
   useEffect(() => { setProgramOpen(false); }, [cue?.id]);
 
   const black = BLACK.has(mode) && !programOpen;
-  const nightCloth = mode === 'standby' && !programOpen;
+  const nightCloth = (mode === 'standby' || mode === 'react') && !programOpen;
 
   useEffect(() => {
     document.body.classList.toggle('ph-night', black || nightCloth);
@@ -42,7 +46,7 @@ export default function Audience() {
       <ClothBg
         off={black}
         night={nightCloth}
-        still={nightCloth}
+        still={mode === 'standby' && !programOpen}
         base={settings.color_bg}
         blood={settings.color_accent}
       />
@@ -57,8 +61,13 @@ export default function Audience() {
             {mode === 'program' && <Program settings={settings} cast={cast} hidden={showGate} />}
             {mode === 'thanks' && <Program settings={settings} cast={cast} thanks cue={cue} />}
             {mode === 'standby' && <Standby cue={cue} perf={perf} settings={settings} onProgram={() => setProgramOpen(true)} />}
-            {mode === 'vote' && <VoteCard key={`${perf}:${cue?.round_key}`} cue={cue} perf={perf} cast={cast} settings={settings} />}
-            {mode === 'flowers' && <FlowerCard cue={cue} perf={perf} settings={settings} />}
+            {mode === 'react' && <ReactCard key={cue?.id} cue={cue} perf={perf} cast={cast} settings={settings} muted={!!state?.comments_muted} onProgram={() => setProgramOpen(true)} />}
+            {mode === 'vote' && <VoteCard key={`${perf}:${cue?.round_key}`} cue={cue} perf={perf} cast={cast} settings={settings} muted={!!state?.comments_muted} />}
+            {mode === 'blackmsg' && (
+              <div className="ph-black ph-blackmsg" key={cue?.id}>
+                <p><Typed text={cue?.phone_body || cue?.phone_title || ''} /></p>
+              </div>
+            )}
             {mode === 'dark' && (
               <div className="ph-black">{cue?.phone_title && <p className="ph-dim">{cue.phone_title}</p>}</div>
             )}
@@ -135,7 +144,7 @@ function Standby({ cue, perf, settings, onProgram }) {
         <h1>{cue?.phone_title || 'Naka-LIVE ka.'}</h1>
         {cue?.phone_body && <p>{cue.phone_body}</p>}
       </div>
-      {cue?.reactions && perf && <ReactionDock perf={perf} kinds={['heart', 'haha', 'wow', 'sad']} night />}
+      {cue?.reactions && perf && <ReactionDock perf={perf} kinds={EMOJIS} night />}
       <button type="button" className="btn btn-ghost-night" onClick={onProgram}>Tingnan ang program</button>
       <p className="ph-hint">Pababain ang brightness. Lalabas dito ang botohan.</p>
     </div>
@@ -144,7 +153,8 @@ function Standby({ cue, perf, settings, onProgram }) {
 
 /* ---------- VOTE ---------- */
 
-function VoteCard({ cue, perf, cast, settings }) {
+function VoteCard({ cue, perf, cast, settings, muted }) {
+  const tally = useTally(perf, cue?.round_key, false, 3000);
   const storeKey = `adi_vote_${perf}_${cue?.round_key}`;
   const [mine, setMine] = useState(null);
   const [pick, setPick] = useState(null);
@@ -155,6 +165,9 @@ function VoteCard({ cue, perf, cast, settings }) {
 
   const open = !!(cue?.vote_open && perf && cue?.round_key);
   const options = cue?.options || [];
+  const total = options.reduce((n, o) => n + (tally[o] || 0), 0);
+  const pct = (o) => (total ? Math.round(((tally[o] || 0) * 100) / total) : 0);
+  const max = Math.max(0, ...options.map((o) => tally[o] || 0));
 
   async function submit() {
     if (!pick || busy || mine) return;
@@ -199,7 +212,7 @@ function VoteCard({ cue, perf, cast, settings }) {
             </div>
           </div>
           <h2>Naitala ang boto mo.</h2>
-          <p className="muted">Abangan ang resulta sa screen.</p>
+          <LiveBars options={options} pct={pct} tally={tally} max={max} total={total} />
         </div>
       ) : !open ? (
         <div className="vote-done">
@@ -214,7 +227,8 @@ function VoteCard({ cue, perf, cast, settings }) {
               const on = pick === o;
               return (
                 <li key={o} style={{ '--i': i }}>
-                  <button type="button" className={`vote-opt ${on ? 'on' : ''}`} onClick={() => { setPick(o); navigator.vibrate?.(8); }} aria-pressed={on}>
+                  <button type="button" className={`vote-opt ${on ? 'on' : ''}`} style={{ '--pct': `${pct(o)}%` }} onClick={() => { setPick(o); navigator.vibrate?.(8); }} aria-pressed={on}>
+                    <span className="vote-fill" aria-hidden="true" />
                     {m?.photo_url
                       ? <img src={m.photo_url} alt="" className="vote-av" />
                       : <span className="vote-av mono-avatar">{o.slice(0, 1)}</span>}
@@ -222,6 +236,7 @@ function VoteCard({ cue, perf, cast, settings }) {
                       <strong>{o}</strong>
                       {m?.role_label && <small>{m.role_label}</small>}
                     </span>
+                    <span className="vote-pct">{pct(o)}%</span>
                     <span className="vote-radio" aria-hidden="true" />
                   </button>
                 </li>
@@ -233,17 +248,51 @@ function VoteCard({ cue, perf, cast, settings }) {
             <button type="button" className="btn3d btn-block" disabled={!pick || busy} onClick={submit}>
               {busy ? 'Ipinapadala…' : pick ? `Iboto si ${pick}` : 'Pumili ng INA'}
             </button>
-            <p className="muted small center">Isang boto lang bawat phone.</p>
+            <p className="muted small center">Isang boto lang bawat phone · {total.toLocaleString('en-US')} boto na</p>
           </div>
         </>
+      )}
+
+      {(cue?.reactions || cue?.comments) && perf && (
+        <div className="vote-extras">
+          {cue?.reactions && <ReactionDock perf={perf} kinds={EMOJIS} />}
+          {cue?.comments && <CommentBox perf={perf} muted={muted} />}
+        </div>
       )}
     </div>
   );
 }
 
-/* ---------- FLOWERS ---------- */
+function LiveBars({ options, pct, tally, max, total }) {
+  return (
+    <div className="live-bars" aria-label="Live na resulta">
+      <p className="live-bars-head"><span className="live-dot" />Live na botohan · {total.toLocaleString('en-US')}</p>
+      {options.map((o) => (
+        <div key={o} className={`lb ${(tally[o] || 0) === max && max > 0 ? 'lead' : ''}`}>
+          <span className="lb-name">{o}</span>
+          <span className="lb-track"><span className="lb-fill" style={{ width: `${pct(o)}%` }} /></span>
+          <span className="lb-pct">{pct(o)}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-function FlowerCard({ cue, perf, settings }) {
+/* ---------- TYPEWRITER ---------- */
+
+function Typed({ text, speed = 55 }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    setN(0);
+    const t = setInterval(() => setN((v) => (v >= text.length ? v : v + 1)), speed);
+    return () => clearInterval(t);
+  }, [text, speed]);
+  return <>{text.slice(0, n)}<span className="tw-caret" /></>;
+}
+
+/* ---------- FLOWER SEAL ---------- */
+
+function FlowerSeal({ perf, size = 'md' }) {
   const send = useReactionSender(perf);
   const [sent, setSent] = useState(0);
   const [bursts, setBursts] = useState([]);
@@ -256,7 +305,7 @@ function FlowerCard({ cue, perf, settings }) {
     setTimeout(() => setPressed(false), 120);
     const add = Array.from({ length: 2 }, () => ({
       id: Math.random().toString(36).slice(2),
-      dx: Math.round(Math.random() * 220 - 110),
+      dx: Math.round(Math.random() * 200 - 100),
       rz: Math.round(Math.random() * 90 - 45),
     }));
     setBursts((b) => [...b.slice(-16), ...add]);
@@ -264,15 +313,7 @@ function FlowerCard({ cue, perf, settings }) {
   }
 
   return (
-    <div className="flowers">
-      <header className="vote-head">
-        <Brand settings={settings} size="sm" />
-        <span className="live-pill small"><i />LIVE</span>
-      </header>
-      <div className="vote-intro">
-        <h1>{cue?.phone_title || 'Send flowers!'}</h1>
-        {cue?.phone_body && <p>{cue.phone_body}</p>}
-      </div>
+    <div className={`seal-wrap seal-${size}`}>
       <div className="flower-stage stage3d">
         {bursts.map((b) => (
           <span
@@ -281,19 +322,148 @@ function FlowerCard({ cue, perf, settings }) {
             style={{ '--dx': `${b.dx}px`, '--rz': `${b.rz}deg` }}
             onAnimationEnd={() => setBursts((all) => all.filter((x) => x.id !== b.id))}
           >
-            <ReactionIcon kind="flower" size={46} />
+            <ReactionIcon kind="flower" size={44} />
           </span>
         ))}
         <button type="button" className={`flower-btn ${pressed ? 'pressed' : ''}`} onClick={tap} aria-label="Magpadala ng bulaklak">
           <span className="fb-rim" />
           <span className="fb-face">
             <span className="fb-icon"><ReactionIcon kind="flower" size={112} /></span>
-            <small>Tap</small>
+            <small>Flowers</small>
           </span>
         </button>
       </div>
-      <p className="center flower-count-ph">{sent > 0 ? `${sent} bulaklak ang naipadala mo` : 'I-tap nang paulit-ulit'}</p>
-      {cue?.reactions && perf && <ReactionDock perf={perf} kinds={['heart', 'haha', 'wow', 'sad']} />}
+      <p className="seal-count">{sent > 0 ? `${sent} bulaklak ang naipadala mo` : 'I-tap nang paulit-ulit'}</p>
+    </div>
+  );
+}
+
+/* ---------- COMMENT BOX ---------- */
+
+function CommentBox({ perf, muted, night = false }) {
+  const [text, setText] = useState('');
+  const [handle, setH] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [wait, setWait] = useState(0);
+  const [msg, setMsg] = useState('');
+  const [mine, setMine] = useState([]);
+
+  useEffect(() => { setH(getHandle()); }, []);
+  useEffect(() => {
+    if (!wait) return undefined;
+    const t = setTimeout(() => setWait((w) => Math.max(0, w - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [wait]);
+
+  async function send(e) {
+    e.preventDefault();
+    const body = cleanText(text.trim()).slice(0, 140);
+    if (!body || busy || wait || muted) return;
+    setBusy(true);
+    setMsg('');
+    const { error } = await getSupabase().from('comments').insert({
+      performance_id: perf, handle: handle || getHandle(), body, device_id: getDeviceId(),
+    });
+    setBusy(false);
+    if (!error) {
+      setText('');
+      setWait(3);
+      setMine((m) => [...m.slice(-2), body]);
+      navigator.vibrate?.(12);
+      return;
+    }
+    if (error.code === 'P0001') { setWait(3); setMsg('Dahan-dahan lang. Isang comment bawat 3 segundo.'); return; }
+    if (error.code === '42501') { setMsg('Sarado ang comments ngayon.'); return; }
+    setMsg('Hindi naipadala. Pakisubukan ulit.');
+  }
+
+  if (muted) return <p className={`cbox-muted ${night ? 'is-night' : ''}`}>Naka-pause ang comments.</p>;
+
+  return (
+    <form className={`cbox ${night ? 'is-night' : ''}`} onSubmit={send}>
+      {mine.length > 0 && (
+        <ul className="cbox-mine" aria-live="polite">
+          {mine.map((m, i) => <li key={i}><b>@{handle}</b> {m}</li>)}
+        </ul>
+      )}
+      <div className="cbox-who">
+        {editing ? (
+          <input
+            className="cbox-name"
+            autoFocus
+            maxLength={20}
+            defaultValue={handle}
+            aria-label="Pangalan mo sa chat"
+            onBlur={(e) => { setH(setHandle(e.target.value)); setEditing(false); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+          />
+        ) : (
+          <button type="button" className="cbox-handle" onClick={() => setEditing(true)}>@{handle} <span>palitan</span></button>
+        )}
+      </div>
+      <div className="cbox-row">
+        <input
+          className="cbox-input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={140}
+          placeholder="Mag-comment…"
+          aria-label="Comment"
+          enterKeyHint="send"
+        />
+        <button className="cbox-send" disabled={!text.trim() || busy || wait > 0} aria-label="Ipadala">
+          {wait > 0 ? wait : (
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3.4 20.6 21 12 3.4 3.4l2.4 7.1L14 12l-8.2 1.5z" fill="currentColor" /></svg>
+          )}
+        </button>
+      </div>
+      {msg && <p className="cbox-msg">{msg}</p>}
+    </form>
+  );
+}
+
+/* ---------- REACT (intros and live moments) ---------- */
+
+function findByTitle(cast, title = '') {
+  const t = String(title).toLowerCase();
+  return cast.find((c) => {
+    const names = [c.display_name, c.character_name].filter(Boolean).map((x) => x.toLowerCase());
+    return names.some((n) => n && (t === n || t.includes(n)));
+  });
+}
+
+function ReactCard({ cue, perf, cast, settings, muted, onProgram }) {
+  const needsWinner = /\{winner\}/i.test(`${cue?.phone_title || ''}${cue?.title || ''}`);
+  const tally = useTally(needsWinner ? perf : null, needsWinner ? cue?.round_key : null, false);
+  const winner = topOf(tally);
+  const name = fillWinner(cue?.phone_title || cue?.title, winner);
+  const sub = cue?.phone_title ? null : cue?.subtitle;
+  const m = findByTitle(cast, needsWinner ? winner : name);
+
+  return (
+    <div className="react">
+      <header className="vote-head">
+        <Brand settings={settings} size="sm" className="on-night" />
+        <span className="live-pill small"><i />LIVE</span>
+      </header>
+
+      <div className="react-hero" key={cue?.id}>
+        {m && (
+          <span className="react-av">
+            {m.photo_url ? <img src={m.photo_url} alt="" /> : <span className="mono-avatar">{m.character_name.slice(0, 1)}</span>}
+          </span>
+        )}
+        {name && <h1>{name}</h1>}
+        {sub && <p className="react-sub">{sub}</p>}
+        {cue?.phone_body && <p className="react-hint">{cue.phone_body}</p>}
+      </div>
+
+      {cue?.flowers && perf && <FlowerSeal perf={perf} size={cue?.reactions ? 'md' : 'lg'} />}
+      {cue?.reactions && perf && <ReactionDock perf={perf} kinds={EMOJIS} night />}
+      {cue?.comments && perf && <CommentBox perf={perf} muted={muted} night />}
+
+      <button type="button" className="btn btn-ghost-night react-prog" onClick={onProgram}>Tingnan ang program</button>
     </div>
   );
 }

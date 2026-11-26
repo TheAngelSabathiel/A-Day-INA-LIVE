@@ -5,9 +5,9 @@ Next.js on Vercel, Supabase for data and realtime.
 
 | Page | Who uses it | What it does |
 |---|---|---|
-| `/` | Audience (QR) | Program, voting, flowers and reactions (love, haha, wow, sad). Follows the cue: goes dark during blackouts, lights up for votes. |
+| `/` | Audience (QR) | Program, live voting with progress, flowers, 5 emojis (love, haha, wow, sad, angry) and comments. Follows the cue: goes dark during blackouts, lights up for votes. |
 | `/screen` | Projector laptop | Show backdrop: idle + QR, lower thirds, title cards, live vote bars, breaking news, scripted chat, glitch, SMS, reveal, curtain call. |
-| `/control` | Stage manager (PIN) | Cue list with big GO / Back, active show selector, live tally, emergency blackout, push a chat line. |
+| `/control` | Stage manager (PIN) | Cue list with big GO / Back, live tally, +1/+5/+10 and ghost votes, quick edit of name strips, comment hide/mute, emergency blackout, push a chat line. |
 | `/admin` | Admin (PIN) | Logo/sublogo, colors, program text, cast + photos, every cue, shows, votes and resets. |
 
 Every page works on phone and desktop. The app is locked against browser auto-translate, so titles and epithets always show as written.
@@ -19,7 +19,7 @@ Every page works on phone and desktop. The app is locked against browser auto-tr
 1. Create a project at supabase.com (region: Singapore).
 2. **SQL Editor > New query**, paste all of `supabase/schema.sql`, **Run**.
    This creates the tables, security rules, the `brand` storage bucket, realtime, and seeds the cast, the 5 shows and all 26 cues from the script.
-   Already ran an older `schema.sql`? Run `supabase/patch-01-reactions-epithets.sql` once instead (adds audience reactions, script epithets, removes the text message cue).
+   Already set up before Nov 27? Run `supabase/patch-02-new-script.sql` once instead. It adds audience comments, manual votes and glitch effects, and replaces the cue list with the new script (saved votes are kept).
 3. **Project Settings > API Keys**, copy:
    - Project URL
    - **Publishable key** (`sb_publishable_...`)
@@ -54,7 +54,11 @@ Each cue sets what the projector and phones show. Edit them anytime in **Admin >
 - **Voting:** same `round_key` = same poll. Votes are accepted only while the current cue has *Voting OPEN*, only for listed options, one per phone per round, and are blocked during emergency blackout.
 - **Round 1 "WALA!"** is just the result card's title. Real votes are still recorded (see Admin > Shows & Votes).
 - **Final "ELIMINATED:"** has no name on purpose. A title ending in `:` with no body shows a blinking blank.
-- **Reactions:** tick *Audience reactions* on a cue to give phones the reaction bar; reactions rise up the right side of the projector. On by default for the intros, show logo and "WALA!".
+- **Comments:** tick *Audience comments* on a cue. Comments run down the left of the projector (one per phone every 3 seconds, profanity and links masked). Control can hide any comment or mute all.
+- **Manual votes:** Control's vote panel adds +1/+5/+10 to any name. *Ghost votes* keeps adding small random batches while voting is open; pick a name to push. The tally everyone sees is real + manual.
+- **Winner:** the `winner` screen mode shows the top vote-getter of the cue's round with the MAMA Medal. Use `{winner}` in a title or phone title.
+- **Effects:** *Flicker* or *Heavy glitch* on any cue. *Speed up* makes a chat flood accelerate.
+- **Reactions:** tick *Emojis* (and *Flowers*) on a cue; reactions rise across the whole projector. On for every intro and the lively moments.
 - **Chat lines:** one per line, `name|message` for a fixed username, loop for floods.
 - **Viewer counter:** in-world number. Set a target (e.g. `525600` on the reveal) or leave blank to drift upward.
 

@@ -341,11 +341,16 @@ const SCREEN_MODES = [
   ['message', 'Message: typewriter text (dark)'],
   ['sms', 'SMS on a phone (dark): title = sender, body = text'],
   ['black', 'Black'],
+  ['winner', 'Winner: top vote-getter of the round + MAMA Medal (use {winner} in title)'],
+  ['voicemsg', 'Voice message: name + animated waveform (dark)'],
+  ['blackmsg', 'Black message: pure black, typed text'],
   ['curtain', 'Curtain call: credits + helpline'],
 ];
 
 const PHONE_MODES = [
   ['program', 'Program (bright)'],
+  ['react', 'React: name + 5 emojis + flowers + comments (per the checkboxes)'],
+  ['blackmsg', 'Black message (typed)'],
   ['standby', 'Standby (dim, may program button)'],
   ['vote', 'Vote'],
   ['flowers', 'Send flowers'],
@@ -358,7 +363,7 @@ const PHONE_MODES = [
 const BLANK_CUE = {
   label: 'Bagong cue', note: '', screen_mode: 'live', phone_mode: 'standby', title: '', subtitle: '', body: '', caption: '',
   phone_title: '', phone_body: '', options: [], round_key: '', vote_open: false, show_bars: false, show_qr: false,
-  show_live: true, counter_target: null, flowers: false, reactions: false, timer_seconds: null, chat_lines: [], chat_interval_ms: 2500, chat_loop: false,
+  show_live: true, counter_target: null, flowers: false, reactions: false, comments: false, chat_ramp: false, fx: 'none', timer_seconds: null, chat_lines: [], chat_interval_ms: 2500, chat_loop: false,
 };
 
 function CuesTab({ notify }) {
@@ -428,7 +433,7 @@ function CuesTab({ notify }) {
             <li key={c.id} className={sel === c.id ? 'on' : ''}>
               <button type="button" className="cue-pick" onClick={() => setSel(c.id)}>
                 <span className="cue-n">{i + 1}</span>
-                <span><strong>{c.label}</strong><small>{c.screen_mode} · {c.phone_mode}{c.vote_open ? ' · vote' : ''}{c.reactions ? ' · reactions' : ''}</small></span>
+                <span><strong>{c.label}</strong><small>{c.screen_mode} · {c.phone_mode}{c.vote_open ? ' · vote' : ''}{c.reactions ? ' · emoji' : ''}{c.comments ? ' · comments' : ''}</small></span>
               </button>
               <span className="cue-ord">
                 <button type="button" onClick={() => move(c, -1)} aria-label="Move up" disabled={i === 0}>▲</button>
@@ -513,10 +518,18 @@ function CueEditor({ cue, notify, onSaved, onClose, onDuplicate, onDelete }) {
           <Check label="LIVE badge + viewer counter" checked={d.show_live} onChange={set('show_live')} />
           <Check label="Show QR" checked={d.show_qr} onChange={set('show_qr')} />
           <Check label="Flowers (screen + phones)" checked={d.flowers} onChange={set('flowers')} />
-          <Check label="Audience reactions (love, haha, wow, sad)" checked={d.reactions} onChange={set('reactions')} />
+          <Check label="Emojis (love, haha, wow, sad, angry)" checked={d.reactions} onChange={set('reactions')} />
+          <Check label="Audience comments" checked={d.comments} onChange={set('comments')} />
         </div>
         <Field label="Viewer counter target" hint="Blangko = dahan-dahang tumataas. Hal. 525600 sa reveal.">
           <input type="number" value={d.counter_target ?? ''} onChange={(e) => set('counter_target')(e.target.value)} />
+        </Field>
+        <Field label="Screen effect" hint="Flicker = lights flicker. Heavy = full glitch.">
+          <select value={d.fx || 'none'} onChange={(e) => set('fx')(e.target.value)}>
+            <option value="none">None</option>
+            <option value="flicker">Flicker</option>
+            <option value="heavy">Heavy glitch</option>
+          </select>
         </Field>
         <Field label="Countdown (seconds)" hint="Optional, para sa vote screen.">
           <input type="number" value={d.timer_seconds ?? ''} onChange={(e) => set('timer_seconds')(e.target.value)} />
@@ -546,7 +559,10 @@ function CueEditor({ cue, notify, onSaved, onClose, onDuplicate, onDelete }) {
           <Area rows={5} value={chatText} onChange={setChatText} />
         </Field>
         <Field label="Interval (ms)"><input type="number" value={d.chat_interval_ms ?? 2500} onChange={(e) => set('chat_interval_ms')(e.target.value)} /></Field>
-        <div className="checks"><Check label="Loop / flood" checked={d.chat_loop} onChange={set('chat_loop')} /></div>
+        <div className="checks">
+          <Check label="Loop / flood" checked={d.chat_loop} onChange={set('chat_loop')} />
+          <Check label="Speed up (build-up)" checked={d.chat_ramp} onChange={set('chat_ramp')} />
+        </div>
       </div>
     </div>
   );

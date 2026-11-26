@@ -8,6 +8,7 @@ export const REACTIONS = [
   { kind: 'haha', label: 'Haha' },
   { kind: 'wow', label: 'Wow' },
   { kind: 'sad', label: 'Sad' },
+  { kind: 'angry', label: 'Angry' },
   { kind: 'flower', label: 'Flowers' },
 ];
 
@@ -16,6 +17,7 @@ const FILLS = {
   haha: ['#FFE07A', '#F3A41B'],
   wow: ['#FFE07A', '#F3A41B'],
   sad: ['#FFE07A', '#F3A41B'],
+  angry: ['#FF8A3D', '#D4261A'],
   flower: ['#FFA3C2', '#D93C74'],
 };
 
@@ -52,6 +54,15 @@ function Glyph({ kind }) {
           <ellipse cx="30" cy="22.5" rx="2.4" ry="2.9" fill={FACE} />
           <path d="M17.5 34.5c1.8-2.2 4-3.3 6.5-3.3s4.7 1.1 6.5 3.3" fill="none" stroke={FACE} strokeWidth="2.6" strokeLinecap="round" />
           <path d="M33 26.5c1.6 2.4 2.4 4 2.4 5a2.4 2.4 0 0 1-4.8 0c0-1 .8-2.6 2.4-5Z" fill="#6EC3FF" />
+        </g>
+      );
+    case 'angry':
+      return (
+        <g>
+          <path d="M13 17.5l7.5 3.2M35 17.5l-7.5 3.2" fill="none" stroke={FACE} strokeWidth="2.8" strokeLinecap="round" />
+          <ellipse cx="18.5" cy="24" rx="2.4" ry="2.6" fill={FACE} />
+          <ellipse cx="29.5" cy="24" rx="2.4" ry="2.6" fill={FACE} />
+          <path d="M18 34.5c1.7-1.6 3.7-2.4 6-2.4s4.3.8 6 2.4" fill="none" stroke={FACE} strokeWidth="2.8" strokeLinecap="round" />
         </g>
       );
     case 'flower':
@@ -104,7 +115,7 @@ export function useReactionSender(perf) {
       pending.current = {};
       if (rows.length && sb) await sb.from('reactions').insert(rows);
     };
-    const t = setInterval(flush, 2500);
+    const t = setInterval(flush, 2000);
     return () => { clearInterval(t); flush(); };
   }, [perf]);
   return (kind) => {

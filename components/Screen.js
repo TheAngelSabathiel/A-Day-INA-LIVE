@@ -3,23 +3,25 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useShow, useTally } from '@/lib/useShow';
 import { getSupabase } from '@/lib/supabase';
 import { parseChatLine } from '@/lib/chat';
+import { cleanText, fillWinner, topOf, useAudienceComments } from '@/lib/comments';
 import { Brand } from './Brand';
 import QR, { prettyUrl, useJoinUrl } from './QR';
 import ThemeVars from './ThemeVars';
 import ClothBg from './ClothBg';
 import { ReactionIcon } from './Reactions';
 import Setup from './Setup';
-import VoteBars, { tallyTotal } from './VoteBars';
+import VoteBars, { findCast, tallyTotal } from './VoteBars';
 
-const DARK_MODES = new Set(['glitch', 'message', 'sms', 'black']);
+const DARK_MODES = new Set(['glitch', 'message', 'sms', 'black', 'voicemsg', 'blackmsg']);
+const NO_RAIL = new Set(['chat', 'black', 'blackmsg', 'idle', 'curtain', 'glitch', 'message', 'voicemsg']);
 
 export default function Screen() {
-  const { settings, state, cue, cast, status } = useShow();
+  const { settings, state, cue, cast, status } = useShow({ pollCue: true });
   const cueKey = `${cue?.id || 'none'}:${state?.cue_started_at || ''}`;
   const mode = state?.override === 'black' ? 'black' : cue?.screen_mode || 'idle';
   const joinUrl = useJoinUrl(settings);
   const viewers = useViewerCounter(cue?.counter_target, cueKey);
-  const chat = useChatFeed(cue, cueKey, state);
+  const chat = useChatFeed(cue, cueKey, state, state?.performance_id);
   const { petals, total: flowerTotal, removePetal } = useReactions(state?.performance_id, cueKey);
   const tally = useTally(state?.performance_id, cue?.round_key, !!cue?.vote_open);
   const left = useCountdown(cue?.timer_seconds, cueKey);
@@ -40,19 +42,20 @@ export default function Screen() {
 
   const dark = DARK_MODES.has(mode);
   const blankResult = mode === 'result' && !cue?.body && /:\s*$/.test(cue?.title || '');
-  const stain = dark ? 0.7 : blankResult ? 0.45 : mode === 'chat' && cue?.chat_loop ? 0.3 : 0;
-  const showTop = !!cue?.show_live && mode !== 'black' && mode !== 'idle';
-  const chatInline = mode === 'chat' || mode === 'vote';
-  const chatOn = chat.length > 0 && mode !== 'black';
+  const stain = mode === 'blackmsg' ? 0 : dark ? 0.7 : blankResult ? 0.45 : mode === 'chat' && cue?.chat_loop ? 0.3 : 0;
+  const showTop = !!cue?.show_live && !['black', 'idle', 'blackmsg'].includes(mode);
   const lowerThird = mode === 'live' && (cue?.title || cue?.subtitle);
-  const qrFloat = cue?.show_qr && !['idle', 'vote', 'black'].includes(mode);
+  const railOn = chat.length > 0 && !NO_RAIL.has(mode) && (cue?.comments || cue?.chat_lines?.length > 0);
+  const qrFloat = cue?.show_qr && !['idle', 'vote', 'black', 'blackmsg'].includes(mode);
+  const winner = topOf(tally);
+  const fx = state?.override === 'black' ? 'none' : cue?.fx || 'none';
 
   return (
-    <div className={`screen ${dark ? 'is-dark' : ''} mode-${mode} ${idle ? 'is-idle' : ''}`}>
+    <div className={`screen ${dark ? 'is-dark' : ''} mode-${mode} fx-${fx} ${railOn ? 'has-rail' : ''} ${idle ? 'is-idle' : ''}`}>
       <ThemeVars settings={settings} />
       <ClothBg
         autoDrift
-        off={mode === 'black'}
+        off={mode === 'black' || mode === 'blackmsg'}
         night={dark}
         stain={stain}
         base={settings.color_bg}
@@ -77,15 +80,15 @@ export default function Screen() {
           <div className="sc-swing" key={cueKey}>
             <Body
               mode={mode} cue={cue} settings={settings} cast={cast} tally={tally} chat={chat}
-              chatOn={chatOn && chatInline} joinUrl={joinUrl} left={left} cueKey={cueKey}
+              joinUrl={joinUrl} left={left} cueKey={cueKey} winner={winner}
             />
           </div>
         </div>
       </main>
 
       {lowerThird && (
-        <div className="lower-third" key={'lt' + cueKey}>
-          {cue.title && <strong>{cue.title}</strong>}
+        <div className="lower-third" key={'lt' + cueKey + cue.title + cue.subtitle}>
+          {cue.title && <strong>{fillWinner(cue.title, winner)}</strong>}
           {cue.subtitle && <span>{cue.subtitle}</span>}
         </div>
       )}
@@ -99,11 +102,14 @@ export default function Screen() {
         </div>
       )}
 
-      {chatOn && !chatInline && (
-        <aside className="sc-chat-float"><ChatFeed msgs={chat} /></aside>
+      {railOn && (
+        <aside className={`sc-rail ${lowerThird ? 'above-lt' : ''}`} aria-label="Live chat">
+          <p className="rail-head"><span className="rail-dot" />Live chat</p>
+          <ChatFeed msgs={chat.slice(-12)} />
+        </aside>
       )}
 
-      {cue?.caption && mode !== 'black' && <div className="sc-caption" key={'cap' + cueKey}>{cue.caption}</div>}
+      {cue?.caption && !['black', 'blackmsg'].includes(mode) && <div className="sc-caption" key={'cap' + cueKey}>{cue.caption}</div>}
 
       {qrFloat && (
         <div className="sc-qr-float">
@@ -113,16 +119,19 @@ export default function Screen() {
       )}
 
       {cue?.flowers && flowerTotal > 0 && (
-        <div className="flower-count" key={flowerTotal}>💐 {flowerTotal.toLocaleString('en-US')}</div>
+        <div className="flower-count" key={flowerTotal}><ReactionIcon kind="flower" size={28} /> {flowerTotal.toLocaleString('en-US')}</div>
       )}
 
-      {mode !== 'black' && (
+      {fx !== 'none' && <div className="fx-flash" aria-hidden="true" />}
+      {fx === 'heavy' && <div className="fx-layer" aria-hidden="true"><i /><i /><i /><i /><i /></div>}
+
+      {!['black', 'blackmsg'].includes(mode) && (
         <div className="petals" aria-hidden="true">
           {petals.map((p) => (
             <span
               key={p.id}
-              className={`petal ${p.lane ? 'in-lane' : ''}`}
-              style={{ left: `${p.x}%`, animationDuration: `${p.d}s`, '--size': p.s, '--sway': `${p.w}vw` }}
+              className={`petal kind-${p.kind}`}
+              style={{ left: `${p.x}%`, animationDuration: `${p.d}s`, animationDelay: `${p.delay || 0}s`, '--size': p.s, '--sway': `${p.w}vw` }}
               onAnimationEnd={() => removePetal(p.id)}
             >
               <ReactionIcon kind={p.kind} size={64} />
@@ -136,7 +145,7 @@ export default function Screen() {
   );
 }
 
-function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, cueKey }) {
+function Body({ mode, cue, settings, cast, tally, chat, joinUrl, left, cueKey, winner }) {
   switch (mode) {
     case 'black':
       return null;
@@ -171,7 +180,7 @@ function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, c
       return (
         <section className="sc-title">
           <Brand settings={settings} size={cue?.title ? 'md' : 'xl'} className={cue?.title ? '' : 'extrude'} />
-          {cue?.title && <h1 className="sc-h1 extrude">{cue.title}</h1>}
+          {cue?.title && <h1 className="sc-h1 extrude">{fillWinner(cue.title, winner)}</h1>}
           {cue?.subtitle && <p className="sc-kicker">{cue.subtitle}</p>}
           {cue?.body && <p className="sc-body">{cue.body}</p>}
         </section>
@@ -180,7 +189,7 @@ function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, c
     case 'vote': {
       const total = tallyTotal(cue.options, tally);
       return (
-        <section className={`sc-vote ${chatOn ? 'has-chat' : ''}`}>
+        <section className="sc-vote">
           <div className="sc-vote-main">
             <header className="sc-vote-head">
               <div>
@@ -201,7 +210,6 @@ function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, c
             </header>
             {cue.show_bars && <VoteBars options={cue.options} tally={tally} cast={cast} />}
           </div>
-          {chatOn && <aside className="sc-vote-chat"><ChatFeed msgs={chat} /></aside>}
         </section>
       );
     }
@@ -219,7 +227,7 @@ function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, c
       return (
         <section className="sc-result">
           {cue.subtitle && <p className="sc-kicker">{cue.subtitle}</p>}
-          <h1 className={`sc-h1 pop extrude ${blank ? 'nowrap' : ''}`}>{cue.title}{blank && <span className="blank-cursor" />}</h1>
+          <h1 className={`sc-h1 pop extrude ${blank ? 'nowrap' : ''}`}>{fillWinner(cue.title, winner)}{blank && <span className="blank-cursor" />}</h1>
           {cue.body && <p className="sc-body">{cue.body}</p>}
           {cue.show_bars && cue.options?.length > 0 && <VoteBars options={cue.options} tally={tally} cast={cast} compact />}
         </section>
@@ -240,7 +248,7 @@ function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, c
       return (
         <section className="sc-chatmode">
           {cue.title && <p className="sc-kicker">{cue.title}</p>}
-          <ChatFeed msgs={chat} big />
+          <ChatFeed msgs={chat.slice(-9)} big />
         </section>
       );
 
@@ -269,6 +277,51 @@ function Body({ mode, cue, settings, cast, tally, chat, chatOn, joinUrl, left, c
             <div className="sms-bubble">{cue.body}</div>
             <div className="sms-meta">Delivered</div>
           </div>
+        </section>
+      );
+
+    case 'winner': {
+      const m = findCast(cast, winner || '');
+      return (
+        <section className="sc-winner">
+          {cue.subtitle && <p className="sc-kicker">{cue.subtitle}</p>}
+          <div className="medal" aria-hidden="true">
+            <span className="medal-ribbon"><i /><i /></span>
+            <span className="medal-disc">
+              {m?.photo_url ? <img src={m.photo_url} alt="" /> : <span className="medal-text"><b>MAMA</b><small>MEDAL</small></span>}
+            </span>
+          </div>
+          <h1 className="sc-h1 pop extrude">{winner ? fillWinner(cue.title || '{winner}', winner) : 'Walang boto pa'}</h1>
+          {cue.body && <p className="sc-body">{cue.body}</p>}
+        </section>
+      );
+    }
+
+    case 'voicemsg':
+      return (
+        <section className="sc-voice">
+          <div className="vm-card">
+            <div className="vm-top">
+              <span className="vm-av">{(cue.title || '?').slice(0, 1)}</span>
+              <span className="vm-who"><strong>{cue.title}</strong>{cue.subtitle && <small>{cue.subtitle}</small>}</span>
+            </div>
+            <div className="vm-row">
+              <span className="vm-play" aria-hidden="true" />
+              <span className="vm-wave" aria-hidden="true">
+                {Array.from({ length: 38 }, (_, i) => (
+                  <i key={i} style={{ '--h': `${22 + Math.round(Math.abs(Math.sin(i * 1.7) + Math.sin(i * 0.43)) * 36)}%`, '--d': `${(i % 7) * 0.11}s` }} />
+                ))}
+              </span>
+              <Elapsed keyId={cueKey} />
+            </div>
+          </div>
+        </section>
+      );
+
+    case 'blackmsg':
+      return (
+        <section className="sc-blackmsg">
+          <p><Typewriter text={cue.body || cue.title || ''} keyId={cueKey} speed={75} /></p>
         </section>
       );
 
@@ -326,13 +379,24 @@ function ChatFeed({ msgs, big = false }) {
   return (
     <ol className={`chat ${big ? 'chat-big' : ''}`}>
       {msgs.map((m) => (
-        <li key={m.id} className={m.injected ? 'injected' : ''}>
+        <li key={m.id} className={`${m.injected ? 'injected' : ''} ${m.audience ? 'from-audience' : ''}`}>
           <span className="chat-av">{(m.name || '?').slice(0, 1).toUpperCase()}</span>
-          <span className="chat-txt"><b>{m.name}</b>{m.text}</span>
+          <span className="chat-txt"><b>{m.name}</b>{cleanText(m.text)}</span>
         </li>
       ))}
     </ol>
   );
+}
+
+function Elapsed({ keyId }) {
+  const [s, setS] = useState(0);
+  useEffect(() => {
+    setS(0);
+    const t0 = Date.now();
+    const t = setInterval(() => setS(Math.floor((Date.now() - t0) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [keyId]);
+  return <span className="vm-time">{Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}</span>;
 }
 
 function Typewriter({ text, keyId, speed = 42 }) {
@@ -383,30 +447,36 @@ function useViewerCounter(target, key) {
   return n;
 }
 
-function useChatFeed(cue, key, state) {
+function useChatFeed(cue, key, state, perfId) {
   const [msgs, setMsgs] = useState([]);
   const injectRef = useRef(undefined);
   const push = useCallback((m) => {
-    setMsgs((prev) => [...prev.slice(-11), { ...m, id: Math.random().toString(36).slice(2) }]);
+    setMsgs((prev) => [...prev.slice(-15), { ...m, id: m.id || Math.random().toString(36).slice(2) }]);
   }, []);
 
+  // Scripted lines for this scene. "Ramp" speeds the flood up line by line.
   useEffect(() => {
-    setMsgs([]);
     const lines = (cue?.chat_lines || []).filter((l) => l && l.trim());
-    if (!lines.length) return;
+    if (!lines.length) return undefined;
+    setMsgs([]);
     let i = 0;
     let t = 0;
+    let gap = Math.max(200, cue.chat_interval_ms || 2500);
     const next = () => {
-      if (i >= lines.length && !cue.chat_loop) { clearInterval(t); return; }
-      const loopPass = i >= lines.length;
-      push(parseChatLine(lines[i % lines.length], loopPass));
+      if (i >= lines.length && !cue.chat_loop) return;
+      push(parseChatLine(lines[i % lines.length], i >= lines.length));
       i += 1;
+      if (cue.chat_ramp) gap = Math.max(180, gap * 0.86);
+      const jitter = cue.chat_loop ? 0.6 + Math.random() * 0.8 : 1;
+      t = setTimeout(next, gap * jitter);
     };
-    t = setInterval(next, Math.max(300, cue.chat_interval_ms || 2500));
     next();
-    return () => clearInterval(t);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  // Live audience comments
+  const hidden = useAudienceComments(perfId, (c) => push({ id: `c${c.id}`, cid: c.id, name: c.handle, text: c.body, audience: true }));
 
   const at = state?.inject_at || null;
   useEffect(() => {
@@ -418,7 +488,7 @@ function useChatFeed(cue, key, state) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [at]);
 
-  return msgs;
+  return hidden.size ? msgs.filter((m) => !m.cid || !hidden.has(m.cid)) : msgs;
 }
 
 function useReactions(perfId, key) {
@@ -438,17 +508,17 @@ function useReactions(perfId, key) {
         const n = Math.max(1, Math.min(10, r.count || 1));
         const flower = r.kind === 'flower';
         if (flower) setTotal((t) => t + n);
-        // Flowers rain across the whole set; other reactions rise up the right edge like a livestream.
-        const add = Array.from({ length: Math.min(n, flower ? 6 : 4) }, () => ({
+        // Every reaction rises across the whole set, staggered so a burst reads as a swarm.
+        const add = Array.from({ length: Math.min(n, 6) }, (_, k) => ({
           id: Math.random().toString(36).slice(2),
           kind: r.kind,
-          lane: !flower,
-          x: flower ? 3 + Math.random() * 94 : 84 + Math.random() * 11,
-          d: flower ? 4.5 + Math.random() * 3 : 3.6 + Math.random() * 1.6,
-          s: flower ? 0.8 + Math.random() * 0.9 : 0.75 + Math.random() * 0.5,
-          w: flower ? Math.random() * 8 - 4 : Math.random() * 3 - 1.5,
+          x: 2 + Math.random() * 96,
+          d: 4 + Math.random() * 3.2,
+          s: (flower ? 0.85 : 0.7) + Math.random() * 0.8,
+          w: Math.random() * 8 - 4,
+          delay: k * 0.18,
         }));
-        setPetals((prev) => [...prev, ...add].slice(-90));
+        setPetals((prev) => [...prev, ...add].slice(-140));
       })
       .subscribe();
     return () => { sb.removeChannel(ch); };

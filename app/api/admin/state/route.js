@@ -16,6 +16,7 @@ export async function POST(req) {
   if ('current_cue_id' in body) { patch.current_cue_id = body.current_cue_id || null; patch.cue_started_at = now; }
   if ('performance_id' in body) patch.performance_id = body.performance_id || null;
   if ('override' in body) patch.override = body.override || null;
+  if ('comments_muted' in body) patch.comments_muted = !!body.comments_muted;
   if (typeof body.inject_text === 'string' && body.inject_text.trim()) {
     patch.inject_text = body.inject_text.trim().slice(0, 240);
     patch.inject_at = now;
