@@ -9,6 +9,7 @@ import QR, { prettyUrl, useJoinUrl } from './QR';
 import ThemeVars from './ThemeVars';
 import ClothBg from './ClothBg';
 import { ReactionIcon } from './Reactions';
+import Medal from './Medal';
 import Setup from './Setup';
 import VoteBars, { findCast, tallyTotal } from './VoteBars';
 
@@ -285,14 +286,11 @@ function Body({ mode, cue, settings, cast, tally, chat, joinUrl, left, cueKey, w
       return (
         <section className="sc-winner">
           {cue.subtitle && <p className="sc-kicker">{cue.subtitle}</p>}
-          <div className="medal" aria-hidden="true">
-            <span className="medal-ribbon"><i /><i /></span>
-            <span className="medal-disc">
-              {m?.photo_url ? <img src={m.photo_url} alt="" /> : <span className="medal-text"><b>MAMA</b><small>MEDAL</small></span>}
-            </span>
+          <Medal photo={m?.photo_url} className="sc-medal" />
+          <div className="win-text">
+            <h1 className="sc-h1 pop win-name">{winner ? fillWinner(cue.title || '{winner}', winner) : 'Walang boto pa'}</h1>
+            {cue.body && <p className="win-body">{cue.body}</p>}
           </div>
-          <h1 className="sc-h1 pop extrude">{winner ? fillWinner(cue.title || '{winner}', winner) : 'Walang boto pa'}</h1>
-          {cue.body && <p className="sc-body">{cue.body}</p>}
         </section>
       );
     }

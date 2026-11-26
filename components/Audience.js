@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase';
 import { getDeviceId, getStored, setStored } from '@/lib/device';
 import { requestGyro } from '@/lib/tilt';
 import { Brand } from './Brand';
+import Medal from './Medal';
 import ClothBg from './ClothBg';
 import ThemeVars from './ThemeVars';
 import Setup from './Setup';
@@ -448,8 +449,9 @@ function ReactCard({ cue, perf, cast, settings, muted, onProgram }) {
         <span className="live-pill small"><i />LIVE</span>
       </header>
 
-      <div className="react-hero" key={cue?.id}>
-        {m && (
+      <div className={`react-hero ${needsWinner ? 'is-winner' : ''}`} key={cue?.id}>
+        {needsWinner && winner && <Medal photo={m?.photo_url} className="ph-medal" />}
+        {!needsWinner && m && (
           <span className="react-av">
             {m.photo_url ? <img src={m.photo_url} alt="" /> : <span className="mono-avatar">{m.character_name.slice(0, 1)}</span>}
           </span>
