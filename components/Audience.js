@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useShow, useTally } from '@/lib/useShow';
-import { cleanText, fillWinner, getHandle, setHandle, topOf } from '@/lib/comments';
+import { cleanText, fillWinner, getHandle, setHandle, winnerOf } from '@/lib/comments';
 import { getSupabase } from '@/lib/supabase';
 import { getDeviceId, getStored, setStored } from '@/lib/device';
 import { requestGyro } from '@/lib/tilt';
@@ -480,7 +480,7 @@ function findByTitle(cast, title = '') {
 function ReactCard({ cue, perf, cast, settings, muted, onProgram }) {
   const needsWinner = /\{winner\}/i.test(`${cue?.phone_title || ''}${cue?.title || ''}`);
   const tally = useTally(needsWinner ? perf : null, needsWinner ? cue?.round_key : null, false);
-  const winner = topOf(tally);
+  const winner = winnerOf(tally, cue?.options);
   const name = fillWinner(cue?.phone_title || cue?.title, winner);
   const sub = cue?.phone_title ? null : cue?.subtitle;
   const m = findByTitle(cast, needsWinner ? winner : name);

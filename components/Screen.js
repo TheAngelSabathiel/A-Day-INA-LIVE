@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useShow, useTally } from '@/lib/useShow';
 import { getSupabase } from '@/lib/supabase';
 import { parseChatLine } from '@/lib/chat';
-import { cleanText, fillWinner, topOf, useAudienceComments } from '@/lib/comments';
+import { cleanText, fillWinner, winnerOf, useAudienceComments } from '@/lib/comments';
 import { Brand } from './Brand';
 import QR, { prettyUrl, useJoinUrl } from './QR';
 import ThemeVars from './ThemeVars';
@@ -48,7 +48,7 @@ export default function Screen() {
   const lowerThird = mode === 'live' && (cue?.title || cue?.subtitle);
   const railOn = chat.length > 0 && !NO_RAIL.has(mode) && (cue?.comments || cue?.chat_lines?.length > 0);
   const qrFloat = cue?.show_qr && !['idle', 'vote', 'black', 'blackmsg'].includes(mode);
-  const winner = topOf(tally);
+  const winner = winnerOf(tally, cue?.options);
   const fx = state?.override === 'black' ? 'none' : cue?.fx || 'none';
 
   return (
