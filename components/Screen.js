@@ -451,12 +451,17 @@ function useViewerCounter(target, key) {
   return n;
 }
 
+// Interval multiplier per speed step (1 slowest, 10 flood).
+const SPEED = [1, 1.9, 1.5, 1.25, 1.1, 1, 0.7, 0.5, 0.35, 0.24, 0.15];
+
 function useChatFeed(cue, key, state, perfId) {
   const [msgs, setMsgs] = useState([]);
   const injectRef = useRef(undefined);
-  // Control's comment speed, 1 (slow) to 10 (flood); 5 = the cue's own interval, default 6.
+  // Control's comment speed, 1 (slow) to 10 (flood). 5 = the cue's own interval; default 6.
   const speedRef = useRef(6);
   speedRef.current = Math.min(10, Math.max(1, Number(state?.chat_speed) || 6));
+  const kickRef = useRef(null);
+  useEffect(() => { kickRef.current?.(); }, [state?.chat_speed]);
   const push = useCallback((m) => {
     setMsgs((prev) => (m.id && prev.some((x) => x.id === m.id) ? prev : [...prev.slice(-15), { ...m, id: m.id || Math.random().toString(36).slice(2) }]));
   }, []);
@@ -498,13 +503,14 @@ function useChatFeed(cue, key, state, perfId) {
         turn += 1;
         if (cue.chat_ramp) gap = Math.max(180, gap * 0.86);
         const jitter = cue.chat_loop ? 0.6 + Math.random() * 0.8 : useSaved ? 0.7 : 1;
-        const speed = Math.pow(0.75, speedRef.current - 5);
-        t = setTimeout(next, Math.max(120, gap * jitter * speed));
+        t = setTimeout(next, Math.max(120, gap * jitter * SPEED[speedRef.current]));
       };
+      // A speed change from Control takes effect right away, not after the current wait.
+      kickRef.current = () => { clearTimeout(t); t = setTimeout(next, 250); };
       next();
     })();
 
-    return () => { alive = false; clearTimeout(t); };
+    return () => { alive = false; clearTimeout(t); kickRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, perfId]);
 

@@ -442,21 +442,23 @@ const SPEEDS = [['Mabagal', 3], ['Normal', 6], ['Mabilis', 8], ['Flood', 10]];
 /** How fast scripted comments roll on the projector. Applies live, mid-cue. */
 function SpeedPanel({ value, onChange }) {
   const [v, setV] = useState(value);
+  const timer = useRef(0);
   useEffect(() => { setV(value); }, [value]);
+  function pick(n) {
+    setV(n);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => onChange(n), 350); // saves once the slider settles
+  }
   return (
     <div className="panel speed-panel">
-      <div className="panel-head"><strong>Bilis ng comments</strong></div>
+      <div className="panel-head">
+        <strong>Bilis ng comments</strong>
+        <span className="muted small">{v <= 3 ? 'Mabagal' : v <= 6 ? 'Normal' : v <= 8 ? 'Mabilis' : 'Flood'}</span>
+      </div>
       <div className="speed-row">
-        <span className="muted small">1</span>
-        <input
-          type="range" min="1" max="10" step="1" value={v}
-          aria-label="Bilis ng comments"
-          onChange={(e) => setV(Number(e.target.value))}
-          onPointerUp={(e) => onChange(Number(e.currentTarget.value))}
-          onKeyUp={(e) => onChange(Number(e.currentTarget.value))}
-          onTouchEnd={(e) => onChange(Number(e.currentTarget.value))}
-        />
-        <span className="muted small">10</span>
+        <span className="muted small">Mabagal</span>
+        <input type="range" min="1" max="10" step="1" value={v} aria-label="Bilis ng comments" onChange={(e) => pick(Number(e.target.value))} />
+        <span className="muted small">Flood</span>
         <span className="speed-val">{v}</span>
       </div>
       <div className="speed-presets">
