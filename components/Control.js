@@ -46,6 +46,7 @@ function ControlInner() {
     sb.from('performances').select('*').order('sort').then(({ data }) => setPerfs(data || []));
   }, []);
 
+
   const send = useCallback(async (body) => {
     setBusy(true);
     setErr('');
@@ -60,6 +61,16 @@ function ControlInner() {
   }, [applyState]);
 
   const go = useCallback((c) => { if (c && !busy) send({ current_cue_id: c.id }); }, [busy, send]);
+
+  // No show picked means phones can't vote, react or comment. Pick one automatically:
+  // the show running around now (Manila time), else Rehearsal / Test.
+  const autoPicked = useRef(false);
+  useEffect(() => {
+    if (autoPicked.current || status !== 'ready' || !state || state.performance_id || !perfs.length) return;
+    autoPicked.current = true;
+    const pick = pickPerformance(perfs);
+    if (pick) send({ performance_id: pick.id });
+  }, [status, state, perfs, send]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -92,10 +103,10 @@ function ControlInner() {
           <Brand settings={settings} size="sm" />
           <span className={`dot ${online ? 'ok' : 'bad'}`} title={online ? 'Connected' : 'Reconnecting'} />
         </div>
-        <label className="ctl-perf">
+        <label className={`ctl-perf ${state?.performance_id ? '' : 'is-missing'}`}>
           <span>Show</span>
           <select value={state?.performance_id || ''} onChange={(e) => send({ performance_id: e.target.value || null })}>
-            <option value="">(none)</option>
+            <option value="">Pumili ng show</option>
             {perfs.map((p) => <option key={p.id} value={p.id}>{p.label}{p.is_test ? ' (test)' : ''}</option>)}
           </select>
         </label>
@@ -108,7 +119,7 @@ function ControlInner() {
       </header>
 
       {perf?.is_test && <div className="ctl-banner">TEST MODE: {perf.label}. Palitan ang Show bago mag-house open.</div>}
-      {!state?.performance_id && <div className="ctl-banner bad">Walang napiling Show. Hindi tatanggap ng boto.</div>}
+      {!state?.performance_id && <div className="ctl-banner bad">Pumili ng Show sa itaas. Hangga't wala, hindi gagana ang boto, reactions at comments sa phones.</div>}
       {err && <div className="ctl-banner bad">{err}</div>}
 
       <div className="ctl-grid">
@@ -368,13 +379,28 @@ function CommentsPanel({ perfId, muted, onMute, onError }) {
     } catch (e) { onError(e.message); }
   }
 
+  const [confirmClear, setConfirmClear] = useState(false);
+  async function clearAll() {
+    if (!confirmClear) { setConfirmClear(true); setTimeout(() => setConfirmClear(false), 4000); return; }
+    setConfirmClear(false);
+    try {
+      await adminPost('/api/admin/comments', { performance_id: perfId, all: true });
+      setList((l) => l.map((x) => ({ ...x, hidden: true })));
+    } catch (e) { onError(e.message); }
+  }
+
   return (
     <div className="panel comments-panel">
       <div className="panel-head">
         <strong>Audience comments</strong>
-        <button type="button" className={`btn btn-sm ${muted ? 'btn-accent' : 'btn-outline'}`} onClick={() => onMute(!muted)}>
-          {muted ? 'MUTED · Tap to allow' : 'Mute comments'}
-        </button>
+        <div className="cm-actions">
+          <button type="button" className={`btn btn-sm ${confirmClear ? 'btn-accent' : 'btn-outline'}`} onClick={clearAll} disabled={!perfId}>
+            {confirmClear ? 'Sigurado? Tap ulit' : 'Clear all'}
+          </button>
+          <button type="button" className={`btn btn-sm ${muted ? 'btn-accent' : 'btn-outline'}`} onClick={() => onMute(!muted)}>
+            {muted ? 'MUTED · Tap to allow' : 'Mute comments'}
+          </button>
+        </div>
       </div>
       {list.length === 0 && <p className="muted small">Wala pang comments.</p>}
       <ul className="cm-list">
@@ -390,4 +416,22 @@ function CommentsPanel({ perfId, muted, onMute, onError }) {
       </ul>
     </div>
   );
+}
+
+/** Picks the show happening around now in Manila (labels like "Nov 28 · 3PM"), else the test show. */
+function pickPerformance(perfs) {
+  const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  const nowMnl = new Date(Date.now() + 8 * 3600e3); // Manila clock read through UTC getters
+  let best = null;
+  for (const p of perfs) {
+    if (p.is_test) continue;
+    const m = /([a-z]{3})[a-z]*\.?\s+(\d{1,2}).*?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i.exec(p.label || '');
+    if (!m || MONTHS[m[1].toLowerCase()] == null) continue;
+    let h = Number(m[3]) % 12;
+    if (m[5].toLowerCase() === 'pm') h += 12;
+    const start = Date.UTC(nowMnl.getUTCFullYear(), MONTHS[m[1].toLowerCase()], Number(m[2]), h, Number(m[4] || 0));
+    const diff = nowMnl.getTime() - start; // ms since curtain
+    if (diff > -3 * 3600e3 && diff < 3 * 3600e3 && (!best || Math.abs(diff) < best.d)) best = { p, d: Math.abs(diff) };
+  }
+  return best?.p || perfs.find((p) => p.is_test) || perfs[0] || null;
 }

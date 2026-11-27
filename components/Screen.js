@@ -52,7 +52,7 @@ export default function Screen() {
   const fx = state?.override === 'black' ? 'none' : cue?.fx || 'none';
 
   return (
-    <div className={`screen ${dark ? 'is-dark' : ''} mode-${mode} fx-${fx} ${railOn ? 'has-rail' : ''} ${idle ? 'is-idle' : ''}`}>
+    <div className={`screen ${dark ? 'is-dark' : ''} mode-${mode} fx-${fx} ${railOn ? 'has-rail' : ''} ${qrFloat ? 'has-qr' : ''} ${idle ? 'is-idle' : ''}`}>
       <ThemeVars settings={settings} />
       <ClothBg
         autoDrift
@@ -288,7 +288,7 @@ function Body({ mode, cue, settings, cast, tally, chat, joinUrl, left, cueKey, w
           {cue.subtitle && <p className="sc-kicker">{cue.subtitle}</p>}
           <Medal photo={m?.photo_url} className="sc-medal" />
           <div className="win-text">
-            <h1 className="sc-h1 pop win-name">{winner ? fillWinner(cue.title || '{winner}', winner) : 'Walang boto pa'}</h1>
+            <WinName text={winner ? fillWinner(cue.title || '{winner}', winner) : 'Walang boto pa'} empty={!winner} />
             {cue.body && <p className="win-body">{cue.body}</p>}
           </div>
         </section>
@@ -373,13 +373,19 @@ function Credits({ text }) {
   );
 }
 
+function WinName({ text, empty }) {
+  const longest = Math.max(...String(text).split(/\s+/).map((w) => w.length), 0);
+  const size = empty ? 'is-empty' : text.length > 16 || longest > 11 ? 'is-long' : text.length > 9 ? 'is-mid' : '';
+  return <h1 className={`sc-h1 pop win-name ${size}`}>{text}</h1>;
+}
+
 function ChatFeed({ msgs, big = false }) {
   return (
     <ol className={`chat ${big ? 'chat-big' : ''}`}>
       {msgs.map((m) => (
         <li key={m.id} className={`${m.injected ? 'injected' : ''} ${m.audience ? 'from-audience' : ''}`}>
           <span className="chat-av">{(m.name || '?').slice(0, 1).toUpperCase()}</span>
-          <span className="chat-txt"><b>{m.name}</b>{cleanText(m.text)}</span>
+          <span className="chat-txt"><b>{m.name}</b>{m.audience || m.injected ? cleanText(m.text) : m.text}</span>
         </li>
       ))}
     </ol>
@@ -449,29 +455,54 @@ function useChatFeed(cue, key, state, perfId) {
   const [msgs, setMsgs] = useState([]);
   const injectRef = useRef(undefined);
   const push = useCallback((m) => {
-    setMsgs((prev) => [...prev.slice(-15), { ...m, id: m.id || Math.random().toString(36).slice(2) }]);
+    setMsgs((prev) => (m.id && prev.some((x) => x.id === m.id) ? prev : [...prev.slice(-15), { ...m, id: m.id || Math.random().toString(36).slice(2) }]));
   }, []);
 
-  // Scripted lines for this scene. "Ramp" speeds the flood up line by line.
+  // Every cue starts with a clean feed. Scripted lines play in order (script lines first),
+  // and the comments-reading scene (chat mode, not a loop) also replays this show's saved
+  // audience comments between the scripted ones.
   useEffect(() => {
-    const lines = (cue?.chat_lines || []).filter((l) => l && l.trim());
-    if (!lines.length) return undefined;
     setMsgs([]);
-    let i = 0;
+    const lines = (cue?.chat_lines || []).filter((l) => l && l.trim());
+    const replay = cue?.screen_mode === 'chat' && cue?.comments && !cue?.chat_loop && perfId;
+    if (!lines.length && !replay) return undefined;
+    let alive = true;
     let t = 0;
-    let gap = Math.max(200, cue.chat_interval_ms || 2500);
-    const next = () => {
-      if (i >= lines.length && !cue.chat_loop) return;
-      push(parseChatLine(lines[i % lines.length], i >= lines.length));
-      i += 1;
-      if (cue.chat_ramp) gap = Math.max(180, gap * 0.86);
-      const jitter = cue.chat_loop ? 0.6 + Math.random() * 0.8 : 1;
-      t = setTimeout(next, gap * jitter);
-    };
-    next();
-    return () => clearTimeout(t);
+
+    (async () => {
+      let saved = [];
+      if (replay) {
+        const sb = getSupabase();
+        const { data } = sb
+          ? await sb.from('comments').select('*').eq('performance_id', perfId).eq('hidden', false).order('id', { ascending: false }).limit(14)
+          : { data: [] };
+        saved = (data || []).reverse().map((c) => ({ id: `c${c.id}`, cid: c.id, name: c.handle, text: c.body, audience: true }));
+      }
+      if (!alive) return;
+
+      let i = 0;
+      let k = 0;
+      let turn = 0;
+      let gap = Math.max(200, cue.chat_interval_ms || 2500);
+      const next = () => {
+        if (!alive) return;
+        const scriptLeft = i < lines.length || (cue.chat_loop && lines.length);
+        const savedLeft = k < saved.length;
+        if (!scriptLeft && !savedLeft) return;
+        // alternate: script, saved, saved, script, saved, saved...
+        const useSaved = savedLeft && (!scriptLeft || turn % 3 !== 0);
+        if (useSaved) { push(saved[k]); k += 1; } else { push(parseChatLine(lines[i % lines.length], i >= lines.length)); i += 1; }
+        turn += 1;
+        if (cue.chat_ramp) gap = Math.max(180, gap * 0.86);
+        const jitter = cue.chat_loop ? 0.6 + Math.random() * 0.8 : useSaved ? 0.7 : 1;
+        t = setTimeout(next, gap * jitter);
+      };
+      next();
+    })();
+
+    return () => { alive = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, perfId]);
 
   // Live audience comments
   const hidden = useAudienceComments(perfId, (c) => push({ id: `c${c.id}`, cid: c.id, name: c.handle, text: c.body, audience: true }));

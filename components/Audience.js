@@ -388,21 +388,7 @@ function CommentBox({ perf, muted, night = false }) {
           {mine.map((m, i) => <li key={i}><b>@{handle}</b> {m}</li>)}
         </ul>
       )}
-      <div className="cbox-who">
-        {editing ? (
-          <input
-            className="cbox-name"
-            autoFocus
-            maxLength={20}
-            defaultValue={handle}
-            aria-label="Pangalan mo sa chat"
-            onBlur={(e) => { setH(setHandle(e.target.value)); setEditing(false); }}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
-          />
-        ) : (
-          <button type="button" className="cbox-handle" onClick={() => setEditing(true)}>@{handle} <span>palitan</span></button>
-        )}
-      </div>
+      <HandleEditor handle={handle} onChange={setH} editing={editing} setEditing={setEditing} />
       <div className="cbox-row">
         <input
           className="cbox-input"
@@ -422,6 +408,51 @@ function CommentBox({ perf, muted, night = false }) {
       {msg && <p className="cbox-msg">{msg}</p>}
     </form>
   );
+}
+
+/** Your chat name. Tap to rename; saved on this phone. */
+function HandleEditor({ handle, onChange, editing, setEditing }) {
+  const [draft, setDraft] = useState(handle);
+  useEffect(() => { if (editing) setDraft(handle); }, [editing, handle]);
+  function save(e) {
+    e?.preventDefault?.();
+    onChange(setHandle(draft));
+    setEditing(false);
+    navigator.vibrate?.(8);
+  }
+  if (editing) {
+    return (
+      <div className="cbox-who is-editing">
+        <span className="cbox-at">@</span>
+        <input
+          className="cbox-name"
+          autoFocus
+          maxLength={20}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          aria-label="Pangalan mo sa chat"
+          enterKeyHint="done"
+          onKeyDown={(e) => { if (e.key === 'Enter') save(e); if (e.key === 'Escape') setEditing(false); }}
+        />
+        <button type="button" className="cbox-save" onClick={save}>I-save</button>
+      </div>
+    );
+  }
+  return (
+    <div className="cbox-who">
+      <span className="cbox-av" aria-hidden="true">{(handle || '?').slice(0, 1).toUpperCase()}</span>
+      <span className="cbox-as">Nagko-comment bilang <b>@{handle}</b></span>
+      <button type="button" className="cbox-rename" onClick={() => setEditing(true)} aria-label="Palitan ang pangalan">
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 17.2V20h2.8l8.3-8.3-2.8-2.8L4 17.2Zm13.7-7.6a.8.8 0 0 0 0-1.1l-2.2-2.2a.8.8 0 0 0-1.1 0l-1.6 1.6 3.3 3.3 1.6-1.6Z" fill="currentColor" /></svg>
+        Palitan
+      </button>
+    </div>
+  );
+}
+
+/** Shown when the control has not picked a show yet, so taps are not silently lost. */
+function Connecting({ night = false }) {
+  return <p className={`ph-wait ${night ? 'is-night' : ''}`}>Kumokonekta sa LIVE…</p>;
 }
 
 /* ---------- REACT (intros and live moments) ---------- */
@@ -464,6 +495,7 @@ function ReactCard({ cue, perf, cast, settings, muted, onProgram }) {
       {cue?.flowers && perf && <FlowerSeal perf={perf} size={cue?.reactions ? 'md' : 'lg'} />}
       {cue?.reactions && perf && <ReactionDock perf={perf} kinds={EMOJIS} night />}
       {cue?.comments && perf && <CommentBox perf={perf} muted={muted} night />}
+      {!perf && (cue?.flowers || cue?.reactions || cue?.comments) && <Connecting night />}
 
       <button type="button" className="btn btn-ghost-night react-prog" onClick={onProgram}>Tingnan ang program</button>
     </div>
@@ -474,7 +506,7 @@ function ReactCard({ cue, perf, cast, settings, muted, onProgram }) {
 
 const ROTS = [-4, 3, -2.5, 4.5, -3, 2];
 
-function Polaroid({ c, i }) {
+function Polaroid({ c, i, credit = false }) {
   const [flip, setFlip] = useState(false);
   const name = c.display_name || c.character_name;
   return (
@@ -496,7 +528,7 @@ function Polaroid({ c, i }) {
         <span className="pol-face pol-back">
           <span className="pol-name">{c.character_name}</span>
           {c.bio && <span className="pol-bio">{c.bio}</span>}
-          {c.actor_name && <span className="pol-actor">Ginagampanan ni <b>{c.actor_name}</b></span>}
+          {credit && c.actor_name && <span className="pol-actor">Ginagampanan ni <b>{c.actor_name}</b></span>}
         </span>
       </button>
     </li>
@@ -506,14 +538,20 @@ function Polaroid({ c, i }) {
 function Program({ settings, cast, thanks = false, cue, onClose, hidden = false }) {
   return (
     <div className={`prog ${hidden ? 'is-hidden' : 'is-in'}`}>
-      {onClose && <button type="button" className="prog-close" onClick={onClose}>Isara</button>}
+      {onClose && (
+        <div className="prog-bar">
+          <button type="button" className="prog-close" onClick={onClose}>
+            <span className="live-dot" aria-hidden="true" />Bumalik sa LIVE
+          </button>
+        </div>
+      )}
 
       <header className="prog-hero stage3d">
         <TitleCard settings={settings} size="md" live={!thanks} />
         <div className="prog-meta">
           {settings.schedule && <span>{settings.schedule}</span>}
           {settings.venue && <span>{settings.venue}</span>}
-          {settings.presenter && <span className="prog-by">Isang produksyon ng {settings.presenter}</span>}
+          {settings.presenter && <span className="prog-by">Hatid ng {settings.presenter}</span>}
         </div>
       </header>
 
@@ -545,13 +583,13 @@ function Program({ settings, cast, thanks = false, cue, onClose, hidden = false 
         <h2 className="sec-h sec-h-one">Ang mga INA ngayong gabi</h2>
         <p className="sec-hint">I-tap ang litrato para makilala sila.</p>
         <ul className="polaroids stage3d">
-          {cast.map((c, i) => <Polaroid key={c.id} c={c} i={i} />)}
+          {cast.map((c, i) => <Polaroid key={c.id} c={c} i={i} credit={thanks} />)}
         </ul>
       </section>
 
       {settings.synopsis && (
         <section className="sec">
-          <h2 className="sec-h">Tungkol sa show</h2>
+          <h2 className="sec-h">Tungkol sa episode</h2>
           <div className="note-card"><p>{settings.synopsis}</p></div>
         </section>
       )}
