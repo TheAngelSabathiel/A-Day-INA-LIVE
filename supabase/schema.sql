@@ -337,6 +337,34 @@ on conflict (id) do nothing;
 -- =====================================================================
 -- SEED (runs only once, when cues is empty)
 -- =====================================================================
+-- ---------- v4: changeable votes, comment speed ----------
+alter table show_state add column if not exists chat_speed int not null default 6;
+alter table show_state drop constraint if exists show_state_chat_speed_chk;
+alter table show_state add constraint show_state_chat_speed_chk check (chat_speed between 1 and 10);
+
+-- One vote per phone per round, changeable while voting is open.
+create or replace function cast_vote(p_performance uuid, p_round text, p_choice text, p_device text)
+returns text language plpgsql security definer set search_path = public as $$
+begin
+  if char_length(coalesce(p_device, '')) not between 8 and 80 then
+    raise exception 'invalid device' using errcode = '22023';
+  end if;
+  if not exists (
+    select 1 from show_state s join cues c on c.id = s.current_cue_id
+    where s.id = 1 and s.performance_id = p_performance and coalesce(s.override, '') <> 'black'
+      and c.vote_open and c.round_key = p_round and p_choice = any (c.options)
+  ) then
+    raise exception 'voting closed' using errcode = '42501';
+  end if;
+  insert into votes (performance_id, round_key, choice, device_id)
+  values (p_performance, p_round, p_choice, p_device)
+  on conflict (performance_id, round_key, device_id)
+  do update set choice = excluded.choice, created_at = now();
+  return p_choice;
+end $$;
+revoke all on function cast_vote(uuid, text, text, text) from public;
+grant execute on function cast_vote(uuid, text, text, text) to anon, authenticated;
+
 do $$
 declare
   rehearsal uuid;
@@ -386,7 +414,7 @@ begin
   (80, 'Intro: Direk Jona', 'Juicy: INA niyo, INA mo, INA nating lahat, Direk Jona Reyes!', 'live', 'react', 'DIREK JONA REYES', 'INA niyo, INA mo, INA nating lahat', null, null, null, 'Mag-react para kay Direk Jona!', '{}', null, false, false, false, true, null, true, true, true, '{}', 2500, false, false, 'none'),
   (90, 'Show logo', 'Juicy: ...scan our QR codes para makavote. May the best mother win!', 'title', 'react', 'MAY THE BEST MOTHER WIN!', 'SINO ANG IE-ELIMINATE?', 'Grace · Overflowing Love · Authenticity · Talent', null, 'May the best mother win!', 'Kayo ang judges ngayong gabi.', '{}', null, false, false, true, true, null, false, true, true, '{}', 2500, false, false, 'none'),
   (100, 'Round 1 card', 'Juicy: Round 1, INA GOT TALENT!', 'title', 'react', 'ROUND 1', 'INA GOT TALENT', null, null, 'Round 1: INA Got Talent', 'Malapit na ang botohan.', '{}', null, false, false, false, true, null, false, true, true, '{}', 2500, false, false, 'none'),
-  (110, 'Round 1 voting OPEN', 'Juicy: Scan the QR code at iboto kung sino ang ie-eliminate!', 'vote', 'vote', 'SINO ANG IE-ELIMINATE?', 'Round 1 · INA Got Talent', null, null, 'Sino ang ie-eliminate?', 'Round 1: INA Got Talent. Isang boto lang bawat phone.', array['Andy', 'Georgie', 'Tonton', 'Jona'], 'round1', true, true, true, true, null, false, true, true, '{}', 2500, false, false, 'none'),
+  (110, 'Round 1 voting OPEN', 'Juicy: Scan the QR code at iboto kung sino ang ie-eliminate!', 'vote', 'vote', 'SINO ANG IE-ELIMINATE?', 'Round 1 · INA Got Talent', null, null, 'Sino ang ie-eliminate?', 'Round 1: INA Got Talent. Pwede mong palitan ang boto habang bukas.', array['Andy', 'Georgie', 'Tonton', 'Jona'], 'round1', true, true, true, true, null, false, true, true, '{}', 2500, false, false, 'none'),
   (120, 'Drumroll: winner', 'Juicy: Nasa akin na ang resulta. And the winner of this round is…', 'drumroll', 'standby', 'And the winner of this round is', 'Round 1 · Resulta', null, null, 'Sarado na ang botohan.', 'Abangan ang resulta sa screen.', '{}', 'round1', false, false, false, true, null, false, false, false, '{}', 2500, false, false, 'none'),
   (130, 'Round 1 WINNER (auto: highest votes)', 'Juicy: Bigyan ng MAMA Medal yan.', 'winner', 'react', '{winner}', 'Winner of Round 1', 'Bigyan ng MAMA Medal yan!', null, '{winner}', 'Bigyan ng MAMA Medal yan!', '{}', 'round1', false, false, false, true, null, true, true, true, '{}', 2500, false, false, 'none'),
   (140, 'Drumroll: eliminated', 'Juicy: At ang eliminated sa first round ay si…', 'drumroll', 'standby', 'Ang eliminated sa first round ay si', 'Round 1 · Resulta', null, null, 'Ang eliminated ay si…', 'Abangan sa screen.', '{}', 'round1', false, false, false, true, null, false, false, false, '{}', 2500, false, false, 'none'),
@@ -399,8 +427,8 @@ begin
   (210, 'Brownout + gunshot', '[BROWNOUT] lights off, on, off, [GUNSHOT], lights on', 'black', 'dark', null, null, null, null, null, null, '{}', null, false, false, false, false, null, false, false, false, '{}', 2500, false, false, 'none'),
   (220, 'THE GAME', 'VO: Leave this room and the rest will be killed.', 'message', 'message', null, null, 'One person in the room did this. Find the killer before another one gets eliminated.', null, null, 'One person in the room did this.', '{}', null, false, false, false, false, null, false, false, false, '{}', 2500, false, false, 'none'),
   (230, 'Game vote: SINO ANG IE-ELIMINATE?', 'VO: Sino ang ieeliminate? Use ghost votes to push JUICY. Stays up until the reveal.', 'vote', 'vote', 'SINO ANG IE-ELIMINATE?', null, null, null, 'Sino ang ie-eliminate?', 'Gumagalaw ang botohan. Ikaw ang judge.', array['JUICY', 'ANDY', 'TONTON', 'GEORGIE', 'JONA'], 'game', true, true, true, true, null, false, true, true, '{}', 2500, false, false, 'none'),
-  (240, 'Reveal: Still on LIVE', 'Jona: ...Still on LIVE? / Tonton: Yes, Direk. 525,600 viewers.', 'live', 'react', null, null, null, 'It''s a prank.', 'It''s a prank.', 'Relax lang, mga Mother Tuckers. Safe ang lahat.', '{}', null, false, false, false, true, 525600, false, true, true, '{}', 2500, false, false, 'none'),
-  (250, 'Enzo voice message', 'Iple-play ang voice message.', 'voicemsg', 'dark', 'Enzo', 'Voice message', null, null, null, null, '{}', null, false, false, false, true, null, false, false, false, '{}', 2500, false, false, 'none'),
+  (240, 'Still on LIVE', 'Jona: ...Still on LIVE? / Tonton: Yes, Direk. 525,600 viewers.', 'live', 'react', null, null, null, null, 'Still on LIVE.', null, '{}', null, false, false, false, true, 525600, false, true, true, '{}', 2500, false, false, 'none'),
+  (250, 'It''s a prank.', 'Lalabas ang "It''s a prank." sa screen at phones.', 'live', 'react', null, null, null, 'It''s a prank.', 'It''s a prank.', 'Relax lang, mga Mother Tuckers. Safe ang lahat.', '{}', null, false, false, false, true, 525600, false, true, true, '{}', 2500, false, false, 'none'),
   (260, 'Hate chat', 'Juicy: Direk. Tingnan mo ''to.', 'chat', 'react', null, null, null, null, 'Mag-comment', 'Lalabas sa screen ang comment mo.', '{}', null, false, false, false, true, null, false, true, true, array['AYAN PALA ANG NANAY.', 'Kaya pala ganun ang anak, ganyan ang ina.', 'Isunod na siya.', 'Scripted ''to, clout lang.', 'Ikaw ang nagpalaki sa halimaw.', 'Nanay ng mamamatay-tao, nag-LIVE pa.', 'Walang hiya, nakangiti pa sa camera.', 'Dapat sa''yo ikulong din.', 'Clout chaser. Ginagamit ang patay na anak.', 'Nasaan ka nung kailangan ka ng anak mo?', 'Bad mother of the year.', 'Unfollow. Report. Block.', 'ELIMINATE THE MOTHER', 'Nakakadiri.', 'tite', 'Ina ka pa ba?', 'Pinabayaan mo siya.', 'Mother tucker talaga.', 'NO TO PAX SILICA'], 1500, true, true, 'none'),
   (270, 'FINAL voting OPEN', 'Pipindutin ni Tonton ang laptop. Hindi mamamatay ang screen.', 'vote', 'vote', 'MAY THE BEST MOTHER WIN!', 'SINO ANG IE-ELIMINATE?', null, null, 'SINO ANG IE-ELIMINATE?', 'Ikaw ang judge.', array['JUICY', 'ANDY', 'TONTON', 'GEORGIE', 'JONA'], 'final', true, true, true, true, null, false, true, true, array['Eliminate JONA.', 'Si Georgie, drama lang.', 'Yung fur mom, OA.', 'Lahat sila, scripted.', 'Eliminate ang nanay ng shooter!', 'JONA OUT', 'Vote JONA, wala siyang karapatan dito.', 'Lahat kayo may kasalanan.', 'Si Juicy na lang, ang ingay.', 'Eliminate ang lahat.', 'Mother of the year daw, pero ang anak...', 'Itigil na ang LIVE na ''to.', 'Isunod na siya.', 'tite', 'NO TO PAX SILICA', 'AYAN PALA ANG NANAY.'], 1100, true, true, 'none'),
   (280, 'Itigil mo na ang LIVE (glitch)', 'Jona: Tonton. Itigil mo na ang… LIVE. Lights flickering. Juicy: Lahat tayo, ina.', 'vote', 'vote', 'MAY THE BEST MOTHER WIN!', 'SINO ANG IE-ELIMINATE?', null, null, 'SINO ANG IE-ELIMINATE?', 'Ikaw ang judge.', array['JUICY', 'ANDY', 'TONTON', 'GEORGIE', 'JONA'], 'final', true, true, true, true, null, false, true, true, array['Eliminate JONA.', 'Si Georgie, drama lang.', 'Yung fur mom, OA.', 'Lahat sila, scripted.', 'Eliminate ang nanay ng shooter!', 'JONA OUT', 'Vote JONA, wala siyang karapatan dito.', 'Lahat kayo may kasalanan.', 'Si Juicy na lang, ang ingay.', 'Eliminate ang lahat.', 'Mother of the year daw, pero ang anak...', 'Itigil na ang LIVE na ''to.', 'Isunod na siya.', 'tite', 'NO TO PAX SILICA', 'AYAN PALA ANG NANAY.'], 700, true, true, 'flicker'),

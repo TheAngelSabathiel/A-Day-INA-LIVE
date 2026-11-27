@@ -170,21 +170,23 @@ function VoteCard({ cue, perf, cast, settings, muted }) {
   const pct = (o) => (total ? Math.round(((tally[o] || 0) * 100) / total) : 0);
   const max = Math.max(0, ...options.map((o) => tally[o] || 0));
 
+  const [changing, setChanging] = useState(false);
+
   async function submit() {
-    if (!pick || busy || mine) return;
+    if (!pick || busy || (mine && !changing)) return;
+    if (changing && pick === mine) { setChanging(false); return; }
     const sb = getSupabase();
     setBusy(true);
     setErr('');
     for (let attempt = 0; attempt < 3; attempt++) {
-      const { error } = await sb.from('votes').insert({
-        performance_id: perf,
-        round_key: cue.round_key,
-        choice: pick,
-        device_id: getDeviceId(),
+      const { error } = await sb.rpc('cast_vote', {
+        p_performance: perf,
+        p_round: cue.round_key,
+        p_choice: pick,
+        p_device: getDeviceId(),
       });
-      if (!error) { setStored(storeKey, pick); setMine(pick); setBusy(false); navigator.vibrate?.([20, 40, 30]); return; }
-      if (error.code === '23505') { setStored(storeKey, '__done__'); setMine('__done__'); setBusy(false); return; }
-      if (error.code === '42501') { setErr('Sarado na ang botohan.'); setBusy(false); return; }
+      if (!error) { setStored(storeKey, pick); setMine(pick); setChanging(false); setBusy(false); navigator.vibrate?.([20, 40, 30]); return; }
+      if (error.code === '42501' || /closed/i.test(error.message || '')) { setErr('Sarado na ang botohan.'); setBusy(false); return; }
       await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
     }
     setErr('Hindi pumasok ang boto. Pakisubukan ulit.');
@@ -203,7 +205,7 @@ function VoteCard({ cue, perf, cast, settings, muted }) {
         {cue?.phone_body && <p>{cue.phone_body}</p>}
       </div>
 
-      {mine ? (
+      {mine && !changing ? (
         <div className="vote-done">
           <div className="stage3d">
             <div className="ballot">
@@ -213,6 +215,15 @@ function VoteCard({ cue, perf, cast, settings, muted }) {
             </div>
           </div>
           <h2>Naitala ang boto mo.</h2>
+          {open && (
+            <button
+              type="button"
+              className="btn btn-outline vote-change"
+              onClick={() => { setPick(mine !== '__done__' ? mine : null); setChanging(true); setErr(''); navigator.vibrate?.(8); }}
+            >
+              Nagbago ang isip? Palitan ang boto
+            </button>
+          )}
           <LiveBars options={options} pct={pct} tally={tally} max={max} total={total} />
         </div>
       ) : !open ? (
@@ -247,9 +258,10 @@ function VoteCard({ cue, perf, cast, settings, muted }) {
           {err && <p className="err center">{err}</p>}
           <div className="vote-cta">
             <button type="button" className="btn3d btn-block" disabled={!pick || busy} onClick={submit}>
-              {busy ? 'Ipinapadala…' : pick ? `Iboto si ${pick}` : 'Pumili ng INA'}
+              {busy ? 'Ipinapadala…' : pick ? (changing ? (pick === mine ? 'Ito pa rin ang boto ko' : `Palitan, iboto si ${pick}`) : `Iboto si ${pick}`) : 'Pumili ng INA'}
             </button>
-            <p className="muted small center">Isang boto lang bawat phone · {total.toLocaleString('en-US')} boto na</p>
+            {changing && <button type="button" className="btn btn-text vote-cancel" onClick={() => setChanging(false)}>Huwag na lang</button>}
+            <p className="muted small center">Isang boto bawat phone. Pwedeng palitan habang bukas · {total.toLocaleString('en-US')} boto na</p>
           </div>
         </>
       )}
@@ -441,7 +453,7 @@ function HandleEditor({ handle, onChange, editing, setEditing }) {
   return (
     <div className="cbox-who">
       <span className="cbox-av" aria-hidden="true">{(handle || '?').slice(0, 1).toUpperCase()}</span>
-      <span className="cbox-as">Nagko-comment bilang <b>@{handle}</b></span>
+      <span className="cbox-as"><small>Nickname mo</small><b>@{handle}</b></span>
       <button type="button" className="cbox-rename" onClick={() => setEditing(true)} aria-label="Palitan ang pangalan">
         <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 17.2V20h2.8l8.3-8.3-2.8-2.8L4 17.2Zm13.7-7.6a.8.8 0 0 0 0-1.1l-2.2-2.2a.8.8 0 0 0-1.1 0l-1.6 1.6 3.3 3.3 1.6-1.6Z" fill="currentColor" /></svg>
         Palitan

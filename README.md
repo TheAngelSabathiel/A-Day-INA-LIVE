@@ -18,8 +18,8 @@ Every page works on phone and desktop. The app is locked against browser auto-tr
 
 1. Create a project at supabase.com (region: Singapore).
 2. **SQL Editor > New query**, paste all of `supabase/schema.sql`, **Run**.
-   This creates the tables, security rules, the `brand` storage bucket, realtime, and seeds the cast, the 5 shows and all 26 cues from the script.
-   Already set up before Nov 27? Run `supabase/patch-02-new-script.sql` once instead, then `supabase/patch-03-tech-run.sql`. Already on patch-02? Run only patch-03. It adds audience comments, manual votes and glitch effects, and replaces the cue list with the new script (saved votes are kept).
+   This creates the tables, security rules, the `brand` storage bucket, realtime, and seeds the cast, the 5 shows and all 32 cues from the script.
+   Already set up before Nov 27? Run `supabase/patch-02-new-script.sql` once instead, then `patch-03-tech-run.sql` and `patch-04-votes-speed.sql`. Run only the patches you haven't run yet, in order. It adds audience comments, manual votes and glitch effects, and replaces the cue list with the new script (saved votes are kept).
 3. **Project Settings > API Keys**, copy:
    - Project URL
    - **Publishable key** (`sb_publishable_...`)
@@ -51,11 +51,11 @@ Each cue sets what the projector and phones show. Edit them anytime in **Admin >
 
 - **Screen modes:** idle, live, title, vote, drumroll, result, news, chat, glitch, message, sms, black, curtain
 - **Phone modes:** program, standby, vote, flowers, dark, glitch, message, thanks
-- **Voting:** same `round_key` = same poll. Votes are accepted only while the current cue has *Voting OPEN*, only for listed options, one per phone per round, and are blocked during emergency blackout.
+- **Voting:** same `round_key` = same poll. Votes are accepted only while the current cue has *Voting OPEN*, only for listed options, and are blocked during emergency blackout. One vote per phone per round; the audience can change it while voting is open.
 - **Round 1 "WALA!"** is just the result card's title. Real votes are still recorded (see Admin > Shows & Votes).
 - **Final "ELIMINATED:"** has no name on purpose. A title ending in `:` with no body shows a blinking blank.
 - **Show picker:** Control picks the show running now (Manila time), or Rehearsal / Test. Phones can't vote, react or comment without one.
-- **Comments:** tick *Audience comments* on a cue. The chat starts empty on every cue; *Viewer comments* replays the audience's comments from earlier in the show between the scripted ones. *Clear all* in Control wipes tech-run comments. Comments run down the left of the projector (one per phone every 3 seconds, profanity and links masked). Control can hide any comment or mute all.
+- **Comments:** tick *Audience comments* on a cue. The chat starts empty on every cue; *Viewer comments* replays the audience's comments from earlier in the show between the scripted ones. *Clear all* in Control wipes tech-run comments. *Bilis ng comments* (1 to 10, default 6) sets how fast scripted comments roll, live. Comments run down the left of the projector (one per phone every 3 seconds, profanity and links masked). Control can hide any comment or mute all.
 - **Manual votes:** Control's vote panel adds +1/+5/+10 to any name. *Ghost votes* keeps adding small random batches while voting is open; pick a name to push. The tally everyone sees is real + manual.
 - **Winner:** the `winner` screen mode shows the top vote-getter of the cue's round with the MAMA Medal. Use `{winner}` in a title or phone title.
 - **Effects:** *Flicker* or *Heavy glitch* on any cue. *Speed up* makes a chat flood accelerate.

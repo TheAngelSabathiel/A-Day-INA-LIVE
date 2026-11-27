@@ -1232,3 +1232,24 @@ a { color: var(--accent); }
 /* News: rail sits above the ticker */
 .mode-news .sc-rail { bottom: 5.2em; }
 .sc-chatmode { height: calc(100vh - 10em); max-height: none; }
+
+/* ===== Nov 27 pm: change vote, nickname, comment colours, control ===== */
+.vote-change { margin: 4px auto 0; display: block; min-height: 46px; padding: 0 20px; font-weight: 700; }
+.vote-cancel { display: block; margin: 0 auto; min-height: 40px; font-weight: 600; color: var(--muted); }
+.cbox-as { display: grid; line-height: 1.15; white-space: normal; overflow: visible; }
+.cbox-as small { font-size: 11px; opacity: .7; letter-spacing: .02em; }
+.cbox-as b { font-size: 16px; overflow-wrap: anywhere; }
+/* Audience comments look the same as every other comment on the projector */
+.chat li.from-audience { border-color: var(--line); }
+.chat li.from-audience .chat-av { background: var(--accent); }
+/* Control: the live cue row stays readable after a tap (sticky hover on phones) */
+.cue-row.now button, .cue-row.now button:hover, .cue-row.now button:focus { background: var(--accent) !important; color: var(--bg) !important; opacity: 1 !important; }
+.cue-row.now button * { color: inherit; opacity: 1; }
+.cue-row.now .cue-live, .cue-row.now .cue-n { color: var(--accent); }
+.speed-panel .speed-row { display: flex; align-items: center; gap: 10px; }
+.speed-panel input[type=range] { flex: 1; accent-color: var(--accent); min-height: 36px; }
+.speed-val { min-width: 2.2em; text-align: center; font-family: var(--display); font-size: 24px; color: var(--accent); }
+.speed-presets { display: flex; gap: 6px; margin-top: 6px; }
+.speed-presets .btn { flex: 1; }
+/* Picking a different INA after a first tap: keep every option tappable (no 3D push-back) */
+.has-pick .vote-opt:not(.on) { transform: scale(.97); opacity: .7; }

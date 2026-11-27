@@ -454,6 +454,9 @@ function useViewerCounter(target, key) {
 function useChatFeed(cue, key, state, perfId) {
   const [msgs, setMsgs] = useState([]);
   const injectRef = useRef(undefined);
+  // Control's comment speed, 1 (slow) to 10 (flood); 5 = the cue's own interval, default 6.
+  const speedRef = useRef(6);
+  speedRef.current = Math.min(10, Math.max(1, Number(state?.chat_speed) || 6));
   const push = useCallback((m) => {
     setMsgs((prev) => (m.id && prev.some((x) => x.id === m.id) ? prev : [...prev.slice(-15), { ...m, id: m.id || Math.random().toString(36).slice(2) }]));
   }, []);
@@ -495,7 +498,8 @@ function useChatFeed(cue, key, state, perfId) {
         turn += 1;
         if (cue.chat_ramp) gap = Math.max(180, gap * 0.86);
         const jitter = cue.chat_loop ? 0.6 + Math.random() * 0.8 : useSaved ? 0.7 : 1;
-        t = setTimeout(next, gap * jitter);
+        const speed = Math.pow(0.75, speedRef.current - 5);
+        t = setTimeout(next, Math.max(120, gap * jitter * speed));
       };
       next();
     })();

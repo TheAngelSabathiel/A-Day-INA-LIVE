@@ -160,6 +160,7 @@ function ControlInner() {
 
           <QuickEdit cue={cue} next={next} onSaved={reloadCues} onError={setErr} />
 
+          <SpeedPanel value={state?.chat_speed ?? 6} onChange={(v) => send({ chat_speed: v })} />
           <CommentsPanel perfId={state?.performance_id} muted={!!state?.comments_muted} onMute={(v) => send({ comments_muted: v })} onError={setErr} />
 
           <form
@@ -434,4 +435,35 @@ function pickPerformance(perfs) {
     if (diff > -3 * 3600e3 && diff < 3 * 3600e3 && (!best || Math.abs(diff) < best.d)) best = { p, d: Math.abs(diff) };
   }
   return best?.p || perfs.find((p) => p.is_test) || perfs[0] || null;
+}
+
+const SPEEDS = [['Mabagal', 3], ['Normal', 6], ['Mabilis', 8], ['Flood', 10]];
+
+/** How fast scripted comments roll on the projector. Applies live, mid-cue. */
+function SpeedPanel({ value, onChange }) {
+  const [v, setV] = useState(value);
+  useEffect(() => { setV(value); }, [value]);
+  return (
+    <div className="panel speed-panel">
+      <div className="panel-head"><strong>Bilis ng comments</strong></div>
+      <div className="speed-row">
+        <span className="muted small">1</span>
+        <input
+          type="range" min="1" max="10" step="1" value={v}
+          aria-label="Bilis ng comments"
+          onChange={(e) => setV(Number(e.target.value))}
+          onPointerUp={(e) => onChange(Number(e.currentTarget.value))}
+          onKeyUp={(e) => onChange(Number(e.currentTarget.value))}
+          onTouchEnd={(e) => onChange(Number(e.currentTarget.value))}
+        />
+        <span className="muted small">10</span>
+        <span className="speed-val">{v}</span>
+      </div>
+      <div className="speed-presets">
+        {SPEEDS.map(([label, n]) => (
+          <button key={n} type="button" className={`btn btn-sm ${v === n ? 'btn-accent' : 'btn-outline'}`} onClick={() => { setV(n); onChange(n); }}>{label}</button>
+        ))}
+      </div>
+    </div>
+  );
 }

@@ -17,6 +17,7 @@ export async function POST(req) {
   if ('performance_id' in body) patch.performance_id = body.performance_id || null;
   if ('override' in body) patch.override = body.override || null;
   if ('comments_muted' in body) patch.comments_muted = !!body.comments_muted;
+  if ('chat_speed' in body) patch.chat_speed = Math.min(10, Math.max(1, Math.round(Number(body.chat_speed) || 6)));
   if (typeof body.inject_text === 'string' && body.inject_text.trim()) {
     patch.inject_text = body.inject_text.trim().slice(0, 240);
     patch.inject_at = now;
